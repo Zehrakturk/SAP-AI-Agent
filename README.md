@@ -19,16 +19,16 @@
 
 | Hafta | Tarih Aralığı | Planlanan İş | Tahmini Tamamlanma (%) | Durum |
 |-------|---------------|--------------|------------------------|-------|
-| 1 | 30.03 - 03.04 | *Literatür taraması yapmak ve bir yol haritası çıkarmak* | %5 | ✅ Tamamlandı |
-| 2 | 06.04 - 13.04 | *Veri entegrasyonu sağlamak ve ve model eğitimine başlamak* | %10  | ⬜ Başlamadı |
-| 3 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 4 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 5 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 6 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 7 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 8 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 9 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
-| 10 | GG.AA - GG.AA | | %... | ⬜ Başlamadı |
+| 1 | 30.03 - 05.04 | *Literatür taraması yapmak ve bir yol haritası çıkarmak* | %5 | ✅ Tamamlandı |
+| 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ⬜ Başlamadı |
+| 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | ⬜ Başlamadı |
+| 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ⬜ Başlamadı |
+| 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ⬜ Başlamadı |
+| 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ⬜ Başlamadı |
+| 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ⬜ Başlamadı |
+| 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | ⬜ Başlamadı |
+| 9 | 01.06 - 07.06 | *Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix* | %90 | ⬜ Başlamadı |
+| 10 | 08.06 - 14.06 | *Yorum doğruluk oranı optimizasyonu* | %100 | ⬜ Başlamadı |
 
 **Durum simgeleri:** ⬜ Başlamadı | 🔄 Devam Ediyor | ✅ Tamamlandı | ⚠️ Gecikti
 
