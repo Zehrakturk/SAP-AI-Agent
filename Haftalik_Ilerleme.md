@@ -20,7 +20,7 @@
 | Hafta | Tarih Aralığı | Planlanan İş | Tahmini Tamamlanma (%) | Durum |
 |-------|---------------|--------------|------------------------|-------|
 | 1 | 30.03 - 05.04 | *Literatür taraması yapmak ve bir yol haritası çıkarmak* | %5 | ✅ Tamamlandı |
-| 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ⬜ Başlamadı |
+| 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ✅ Tamamlandı |
 | 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | ⬜ Başlamadı |
 | 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ⬜ Başlamadı |
 | 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ⬜ Başlamadı |
@@ -37,6 +37,23 @@
 ## Haftalık İlerleme Kayıtları
 
 ---
+
+### Hafta 2 *(Tarih: 06.04.2026 - 12.04.2026)*
+
+**Plandaki hedef:**
+- SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme
+
+**Bu hafta yaptıklarım:**
+- SAP den veri çekilebişdi. Kullanıı tabiki için örnek log sistemi kuruldu.
+
+**Plana göre durumum:**
+- Plana uyuldu.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- Veri alırken lokalde çalışabiliyor olmak ve verilerin boyutunun fazla olması 
+
+**Gelecek hafta hedefim:**
+- Her sorguda veri çekmek mantıksız olacağı için hem de hafıza oluşturmak için alınan veriler bir veritabanına yazılacaktır.
 
 ### Hafta 1 *(Tarih: 30.03.2026 - 03.04.2026)*
 
