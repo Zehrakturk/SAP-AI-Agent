@@ -21,7 +21,7 @@
 |-------|---------------|--------------|------------------------|-------|
 | 1 | 30.03 - 05.04 | *Literatür taraması yapmak ve bir yol haritası çıkarmak* | %5 | ✅ Tamamlandı |
 | 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ✅ Tamamlandı |
-| 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | ⬜ Başlamadı |
+| 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | 🔄 Devam Ediyor |
 | 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ⬜ Başlamadı |
 | 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ⬜ Başlamadı |
 | 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ⬜ Başlamadı |
@@ -36,7 +36,22 @@
 
 ## Haftalık İlerleme Kayıtları
 
----
+---### Hafta 3 *(Tarih: 13.04.2026 - 19.04.2026)*
+
+**Plandaki hedef:**
+- Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*
+
+**Bu hafta yaptıklarım:**
+- SAP kaynaklı veriler ve tablo yapıları modele tanıtıldı. Kullanıcı girdilerini otomatik sorguya dönüştüren mimari geliştirildi.
+
+**Plana göre durumum:**
+- Proje planına tam uyum sağlanmakla birlikte, ilgili süreçler takvime uygun olarak devam etmektedir.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- Kullanıcı tarafından iletilen serbest metin halindeki taleplerin, hatasız ve optimize edilmiş veritabanı sorgularına dönüştürülmesinde 'belirsizlik' (ambiguity) sorunları yaşanmıştır.
+
+**Gelecek hafta hedefim:**
+- Kullanıcıdan gelen taleplerin modele aktarılacağı ve model yanıtlarının görselleştirileceği chat ekranı arayüz tasarımının gerçekleştirilmesi.
 
 ### Hafta 2 *(Tarih: 06.04.2026 - 12.04.2026)*
 
