@@ -36,7 +36,7 @@
 
 ## Haftalık İlerleme Kayıtları
 
----### Hafta 3 *(Tarih: 13.04.2026 - 19.04.2026)*
+### Hafta 3 *(Tarih: 13.04.2026 - 19.04.2026)*
 
 **Plandaki hedef:**
 - Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*
