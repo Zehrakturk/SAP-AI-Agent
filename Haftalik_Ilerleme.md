@@ -36,6 +36,20 @@
 
 ## Haftalık İlerleme Kayıtları
 
+### Hafta 4 *(Tarih: 19.04.2026 - 26.04.2026)*
+
+**Plandaki hedef:**
+- Temel kullanıcı arayüzü (chat ekranı) oluşturma
+
+**Bu hafta yaptıklarım:**
+- Kullanıcı arayüzü oluşturdum, modeli eğittim cevap vermediği sorular için.
+
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır, kullanıcı arayüzü hazırlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- yok
+
 ### Hafta 3 *(Tarih: 13.04.2026 - 19.04.2026)*
 
 **Plandaki hedef:**
