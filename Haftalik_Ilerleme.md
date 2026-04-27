@@ -21,8 +21,8 @@
 |-------|---------------|--------------|------------------------|-------|
 | 1 | 30.03 - 05.04 | *Literatür taraması yapmak ve bir yol haritası çıkarmak* | %5 | ✅ Tamamlandı |
 | 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ✅ Tamamlandı |
-| 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | 🔄 Devam Ediyor |
-| 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ⬜ Başlamadı |
+| 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | ✅ Tamamlandı |
+| 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ✅ Tamamlandı |
 | 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ⬜ Başlamadı |
 | 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ⬜ Başlamadı |
 | 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ⬜ Başlamadı |
