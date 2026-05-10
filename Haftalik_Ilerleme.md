@@ -23,8 +23,8 @@
 | 2 | 06.04 - 13.04 | *SAP’den veri çekme (ABAP API / batch job) ve JSON formatına dönüştürme* | %10  | ✅ Tamamlandı |
 | 3 | 13.04 - 19.04 | *Verilerin temizlenmesi ve AI için uygun hale getirilmesi (preprocessing)*| %25 | ✅ Tamamlandı |
 | 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ✅ Tamamlandı |
-| 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | 🔄 Devam Ediyor |
-| 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ⬜ Başlamadı |
+| 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ✅ Tamamlandı |
+| 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ✅ Tamamlandı |
 | 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ⬜ Başlamadı |
 | 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | ⬜ Başlamadı |
 | 9 | 01.06 - 07.06 | *Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix* | %90 | ⬜ Başlamadı |
@@ -35,6 +35,20 @@
 ---
 
 ## Haftalık İlerleme Kayıtları
+
+### Hafta 6 *(Tarih: 04.05.2026 - 10.05.2026)*
+
+**Plandaki hedef:**
+- Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)
+
+**Bu hafta yaptıklarım:**
+- Her gece 2 de veriler alınacak şekilde scheduler planlandı. Ve kodlandı.
+
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- yok
 
 ### Hafta 5 *(Tarih: 27.04.2026 - 03.04.2026)*
 
