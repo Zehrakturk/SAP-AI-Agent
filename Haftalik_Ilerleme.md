@@ -36,6 +36,20 @@
 
 ## Haftalık İlerleme Kayıtları
 
+### Hafta 7 *(Tarih: 11.05.2026 - 17.05.2026)*
+
+**Plandaki hedef:**
+- AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)
+
+**Bu hafta yaptıklarım:**
+- AI önce kendi veri tabanından sorgu yapmaktadır. Eğer istenen cevap bulunamadıysa o duurmda entegrasyonu çalıştırmaktadır.
+
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- yok
+
 ### Hafta 6 *(Tarih: 04.05.2026 - 10.05.2026)*
 
 **Plandaki hedef:**
