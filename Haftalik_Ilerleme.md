@@ -25,8 +25,8 @@
 | 4 | 19.04 - 26.04 | *Temel kullanıcı arayüzü (chat ekranı) oluşturma*| %35 | ✅ Tamamlandı |
 | 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ✅ Tamamlandı |
 | 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ✅ Tamamlandı |
-| 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ⬜ Başlamadı |
-| 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | ⬜ Başlamadı |
+| 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ✅ Tamamlandı |
+| 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | 🔄 Devam Ediyor |
 | 9 | 01.06 - 07.06 | *Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix* | %90 | ⬜ Başlamadı |
 | 10 | 08.06 - 14.06 | *Yorum doğruluk oranı optimizasyonu* | %100 | ⬜ Başlamadı |
 
@@ -35,6 +35,20 @@
 ---
 
 ## Haftalık İlerleme Kayıtları
+
+### Hafta 8 *(Tarih: 18.05.2026 - 24.05.2026)*
+
+**Plandaki hedef:**
+- İş kuralları (business logic): karlılık, risk analizi, öneri üretimi
+
+**Bu hafta yaptıklarım:**
+- Kullanıcının istediği verilere özel otomatik 4 şablonlu rapor çıktısı ve analiz yapmaktadır.
+  
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- yok
 
 ### Hafta 7 *(Tarih: 11.05.2026 - 17.05.2026)*
 
