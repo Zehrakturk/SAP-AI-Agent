@@ -1,0 +1,30 @@
+# ── Sırlar / kimlik bilgileri (ASLA commit'lenmez) ──────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# ── Yerel veritabanı dosyaları (data/ içindeki .py scriptleri KORUNUR) ──
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/sap_data.db
+
+# ── IDE / OS ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Loglar ──────────────────────────────────────────────────────────
+*.log
