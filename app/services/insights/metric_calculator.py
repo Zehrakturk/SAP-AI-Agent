@@ -27,17 +27,29 @@ def _exec(sql: str, params: tuple = ()) -> list[dict]:
 # Entegrasyon listesi
 # ─────────────────────────────────────────────────────────────────────────────
 
-def list_active_integrations() -> list[dict]:
-    """is_active=1 + target_table dolu olanları döner."""
-    sql = """
+def list_active_integrations(company: str | None = None) -> list[dict]:
+    """
+    is_active=1 + target_table dolu olanları döner.
+    company verilirse (ve 'ALL' değilse) yalnız o firmanınkiler.
+    """
+    where  = "WHERE i.is_active = 1"
+    params : tuple = ()
+    if company and company != "ALL":
+        # company kolonu yoksa filtre atlanır (geriye uyum)
+        chk = _exec("SELECT 1 AS x FROM INFORMATION_SCHEMA.COLUMNS "
+                    "WHERE TABLE_NAME='integrations' AND COLUMN_NAME='company'")
+        if chk:
+            where += " AND i.company = ?"
+            params = (company,)
+    sql = f"""
         SELECT i.id, i.name,
                (SELECT TOP 1 target_table
                 FROM integration_schemas
                 WHERE integration_id = i.id) AS target_table
         FROM   integrations i
-        WHERE  i.is_active = 1
+        {where}
     """
-    rows = _exec(sql)
+    rows = _exec(sql, params)
     return [r for r in rows if r.get("target_table")]
 
 

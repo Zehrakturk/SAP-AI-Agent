@@ -27,7 +27,8 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from app.services.db import get_connection, rows_as_dicts
+from app.services.db     import get_connection, rows_as_dicts
+from app.services.tenant import company_from_request, is_global
 
 integrations_bp = Blueprint("integrations", __name__)
 
@@ -65,6 +66,14 @@ def list_integrations():
                        "service_method", "username", "is_active", "created_at"]
         if "service_type" in cols: select_cols.append("service_type")
         if "auth_type"    in cols: select_cols.append("auth_type")
+        if "company"      in cols: select_cols.append("company")
+
+        # Firma filtresi — admin (ALL) hariç yalnız kendi firması
+        company = company_from_request(request)
+        where, params = "", []
+        if "company" in cols and not is_global(company):
+            where = "WHERE i.company = ?"
+            params.append(company)
 
         cols_sql = ", ".join(f"i.[{c}]" for c in select_cols)
         cursor.execute(f"""
@@ -72,8 +81,9 @@ def list_integrations():
                    (SELECT COUNT(*) FROM integration_vectors iv
                     WHERE iv.integration_id = i.id) AS vector_count
             FROM   integrations i
+            {where}
             ORDER  BY i.id
-        """)
+        """, params)
         rows = [_to_dict(cursor, r) for r in cursor.fetchall()]
         return jsonify(rows)
     finally:
@@ -114,6 +124,13 @@ def create_integration():
         import json as _json
         cols.append("extra_config")
         vals.append(_json.dumps(data["extra_config"], ensure_ascii=False))
+    if "company" in have:
+        # Oluşturanın firması (admin ise body'den veya 'ALL') — kanonikleştir
+        from app.services.tenant import canonical_company
+        comp = company_from_request(request)
+        if is_global(comp):
+            comp = canonical_company(data.get("company") or "ALL")
+        cols.append("company"); vals.append(comp)
 
     placeholders = ",".join("?" * len(cols))
     cursor.execute(

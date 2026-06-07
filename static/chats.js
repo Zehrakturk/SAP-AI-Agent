@@ -464,6 +464,46 @@ const ChatsPage = (() => {
         ${highlights.map(h => `<div style="font-size:12px;color:#1e40af;line-height:1.5">${h}</div>`).join('')}
       </div>` : '';
 
+    // ── Kaynaklar (PDF-RAG / knowledge yanıtı) ────────────────────────────
+    const sources = data.sources || [];
+    const sourcesHtml = sources.length ? `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;
+                  margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:6px">📄 Kaynaklar</div>
+        ${sources.map(s => `
+          <div style="font-size:12px;color:#166534;line-height:1.5;margin-bottom:4px">
+            <b>${s.filename || ''}</b>${s.snippet ? ` — <span style="color:#4b5563">${(s.snippet||'').replace(/</g,'&lt;')}…</span>` : ''}
+          </div>`).join('')}
+      </div>` : '';
+
+    // ── Kullanılan metrikler (Semantic Layer) ─────────────────────────────
+    const metricsUsed = (data.metrics_used || []).filter(Boolean);
+    const metricsUsedHtml = metricsUsed.length ? `
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="font-size:11px;color:#9ca3af;font-weight:600">📐 Kullanılan metrikler:</span>
+        ${metricsUsed.map(m => `<span title="${(m.key||'').replace(/"/g,'&quot;')}"
+            style="font-size:11px;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;
+                   border-radius:10px;padding:2px 9px">${(m.label||m.key||'').replace(/</g,'&lt;')}</span>`).join('')}
+      </div>` : '';
+
+    // ── Takip soruları (follow-up çipleri) ───────────────────────────────
+    const followUps = (data.follow_ups || []).filter(Boolean).slice(0, 3);
+    const followUpsHtml = followUps.length ? `
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="font-size:11px;color:#9ca3af;font-weight:600">💡 Devam:</span>
+        ${followUps.map(q => {
+          const safe = (q || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const label = (q || '').replace(/</g, '&lt;');
+          return `<button onclick="ChatsPage.askFollowUp('${safe}')"
+            style="font-size:12px;color:#1a56db;background:#eff6ff;border:1px solid #bfdbfe;
+                   border-radius:14px;padding:5px 12px;cursor:pointer;font-family:inherit;
+                   transition:all .15s"
+            onmouseover="this.style.background='#dbeafe';this.style.borderColor='#1a56db'"
+            onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe'"
+          >${label}</button>`;
+        }).join('')}
+      </div>` : '';
+
     // ── Ana grafik ────────────────────────────────────────────────────────
     const primaryChartHtml = showPrimary ? `
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;
@@ -491,6 +531,16 @@ const ChatsPage = (() => {
          ${rows.length > 20 ? `<div style="font-size:11px;color:#9ca3af;padding:6px 10px">+ ${rows.length-20} kayıt daha...</div>` : ''}`
       : '';
 
+    // ── Canlı sorgu rozeti (SQL'e yazılmayan anlık SAP sorgusu) ───────────
+    const liveBadgeHtml = data.mode === 'live' ? `
+      <div style="margin-bottom:8px;display:inline-flex;align-items:center;gap:5px;
+                  font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;
+                  background:${data.live_success===false?'#fef2f2':'#fff7ed'};
+                  color:${data.live_success===false?'#dc2626':'#c2410c'};
+                  border:1px solid ${data.live_success===false?'#fecaca':'#fed7aa'}">
+        <span style="font-size:8px">●</span> CANLI SAP SORGUSU${data.live_success===false?' · HATA':''}
+      </div><br>` : '';
+
     div.innerHTML = `
       <!-- AI avatar — sol -->
       <div style="width:34px;height:34px;background:#1a56db;color:#fff;border-radius:8px;
@@ -502,13 +552,16 @@ const ChatsPage = (() => {
         <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px 16px 16px 16px;
                     padding:14px 16px">
 
-          <div style="font-size:13px;color:#1e293b;line-height:1.65;
+          ${liveBadgeHtml}
+          <div style="font-size:13px;color:#1e293b;line-height:1.65;white-space:pre-wrap;
                       margin-bottom:${kpis.length||highlights.length||showPrimary?'14px':'0'}">
             ${data.summary || ''}
           </div>
 
           ${kpiHtml}
           ${highlightsHtml}
+          ${sourcesHtml}
+          ${metricsUsedHtml}
           ${primaryChartHtml}
           ${secondaryChartHtml}
           ${tableHtml}
@@ -521,6 +574,8 @@ const ChatsPage = (() => {
             <pre style="font-size:11px;background:#0f172a;color:#7dd3fc;padding:10px 12px;
                         border-radius:6px;margin-top:6px;overflow-x:auto;white-space:pre-wrap">${data.sql}</pre>
           </details>` : ''}
+
+          ${followUpsHtml}
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
@@ -1373,6 +1428,14 @@ const ChatsPage = (() => {
     }
   }
 
+  // Takip sorusu çipi tıklandığında: input'u doldur ve hemen gönder
+  function askFollowUp(q) {
+    if (isLoading) return;
+    const input = document.getElementById('chat-input');
+    if (input) input.value = q;
+    sendMessage();
+  }
+
   function clearHistory() {
     chatHistory = [];
     const msgs = document.getElementById('chat-messages');
@@ -1559,7 +1622,13 @@ const ChatsPage = (() => {
               chart_data : m.data.chart_data || {},
               kpis       : m.data.kpis || [],
               highlights : m.data.highlights || [],
+              follow_ups : m.data.follow_ups || [],
+              sources    : m.data.sources || [],
+              metrics_used: m.data.metrics_used || [],
               tables_used: m.data.tables_used || [],
+              mode       : m.data.mode,
+              live_success: m.data.live_success,
+              live_message: m.data.live_message,
             });
           } else {
             appendMessage('assistant', m.content || '');
@@ -1674,7 +1743,7 @@ const ChatsPage = (() => {
     });
   }
 
-  return { render, init, sendMessage, runFilter, onKeyDown, useQuestion,
+  return { render, init, sendMessage, runFilter, onKeyDown, useQuestion, askFollowUp,
            clearHistory, newChat, loadSession, deleteSession, toggleFilters,
            searchSessions, togglePin };
 })();

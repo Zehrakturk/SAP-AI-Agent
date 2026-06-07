@@ -13,7 +13,9 @@ Public API:
 # ve REGISTRY otomatik dolar. Bu satır KRİTİK.
 from app.services.fetchers.implementations import *  # noqa: F401,F403
 
-from app.services.fetchers.orchestrator    import fetch_integration, fetch_all_active
+from app.services.fetchers.orchestrator    import (
+    fetch_integration, fetch_all_active, query_integration_live,
+)
 from app.services.fetchers.core.factory    import FetcherFactory
 
-__all__ = ["fetch_integration", "fetch_all_active", "FetcherFactory"]
+__all__ = ["fetch_integration", "fetch_all_active", "query_integration_live", "FetcherFactory"]

@@ -16,6 +16,13 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+# Windows konsolu Unicode (←, emoji, Türkçe) basamadığı için UTF-8'e zorla
+for _s in ("stdout", "stderr"):
+    try:
+        getattr(sys, _s).reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Make sure Python looks in THIS folder first for the 'app' package
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

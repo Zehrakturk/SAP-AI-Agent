@@ -17,8 +17,9 @@ def login():
         return jsonify({"detail": "Invalid username or password."}), 401
 
     # In production: issue a real JWT here.
-    # For demo we return a simple token string.
-    token = f"demo-token-{user['id']}-{user['role']}"
+    # For demo we return a simple token string: demo-token-{id}-{role}-{company}
+    company = user.get("company", "ALL")
+    token = f"demo-token-{user['id']}-{user['role']}-{company}"
 
     return jsonify({
         "access_token": token,
@@ -28,6 +29,7 @@ def login():
             "username":   user["username"],
             "name":       user["name"],
             "role":       user["role"],
+            "company":    company,
             "department": user["department"],
         },
     })
@@ -59,5 +61,6 @@ def me():
         "username":   user["username"],
         "name":       user["name"],
         "role":       user["role"],
+        "company":    user.get("company", "ALL"),
         "department": user["department"],
     })

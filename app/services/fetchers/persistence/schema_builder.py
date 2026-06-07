@@ -74,6 +74,18 @@ class SchemaBuilder:
         )
         existing = {r[0].upper() for r in cursor.fetchall()}
 
+        # Sistem kolonlarını mevcut (eski) tablolara da garanti et.
+        # Var olan satırlar için NULL eklenir (NOT NULL + default yok hatası önlenir).
+        _system_alters = {
+            "PARAM_HASH"    : "param_hash NVARCHAR(20) NULL",
+            "INTEGRATION_ID": "integration_id INT NULL",
+            "FETCHED_AT"    : "fetched_at DATETIME DEFAULT GETDATE()",
+        }
+        for up_name, ddl in _system_alters.items():
+            if up_name not in existing:
+                cursor.execute(f"ALTER TABLE [{table_name}] ADD {ddl}")
+                print(f"[SCHEMA] {table_name}: sistem kolonu eklendi -> {ddl.split()[0]}")
+
         for col, (_, val) in zip(col_names, sample_row.items()):
             if col.upper() not in existing:
                 sql_type = _infer_sql_type(val)

@@ -34,9 +34,23 @@ CONN_STR = (
 # USERS
 # ─────────────────────────────────────────────
 USERS = [
-    {"id": 1, "username": "admin",      "password": "admin123", "name": "System Admin",  "role": "ADMIN",       "department": "IT",          "status": "active",   "created_at": "2025-01-10", "last_login": "2 min ago"},
-    {"id": 8, "username": "p.frank",   "password": "view123",  "name": "Paul Frank",    "role": "VIEWER",      "department": "Management",  "status": "inactive", "created_at": "2025-03-11", "last_login": "5 days ago"},
+    {"id": 1,  "username": "admin",    "password": "admin123", "name": "System Admin",   "role": "ADMIN",  "company": "ALL",       "department": "IT",        "status": "active",   "created_at": "2025-01-10", "last_login": "2 min ago"},
+    {"id": 10, "username": "warmhaus", "password": "warm123",  "name": "Warmhaus User",  "role": "USER",   "company": "Warmhaus",  "department": "Lojistik",  "status": "active",   "created_at": "2026-06-01", "last_login": "now"},
+    {"id": 11, "username": "beycelik", "password": "bey123",   "name": "Beyçelik User",  "role": "USER",   "company": "Beycelik",  "department": "Üretim",    "status": "active",   "created_at": "2026-06-01", "last_login": "now"},
+    {"id": 8,  "username": "p.frank",  "password": "view123",  "name": "Paul Frank",     "role": "VIEWER", "company": "ALL",       "department": "Management","status": "inactive", "created_at": "2025-03-11", "last_login": "5 days ago"},
 ]
+
+
+def company_of(user_id) -> str:
+    """user_id (int|str) → company. Bulunamazsa 'ALL' (kısıtsız)."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return "ALL"
+    for u in USERS:
+        if u["id"] == uid:
+            return u.get("company", "ALL")
+    return "ALL"
 
 # ─────────────────────────────────────────────
 # CHAT SESSIONS & MESSAGES

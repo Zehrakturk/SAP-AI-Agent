@@ -27,15 +27,21 @@ class SapEnvelopeNormalizer(AbstractNormalizer):
 
         # Dict → bilinen envelope anahtarlarını dene
         if isinstance(raw, dict):
+            matched_any = False
             for key in self.ENVELOPE_KEYS:
-                table = raw.get(key)
+                if key not in raw:
+                    continue
+                matched_any = True            # envelope anahtarı yanıtta VAR
+                table = raw[key]
                 if table is None:
                     continue
                 items = self._extract_items(table)
                 if items:
                     return items
-
-            # Envelope yoksa düz dict → tek satır
+            # Envelope anahtarı vardı ama içi BOŞ → boş liste (sahte tek-kayıt üretme)
+            if matched_any:
+                return []
+            # Hiç envelope anahtarı yok → düz dict tek satır
             return [raw]
 
         return []
@@ -45,14 +51,19 @@ class SapEnvelopeNormalizer(AbstractNormalizer):
         if isinstance(table, list):
             return [self._to_dict(r) for r in table]
         if isinstance(table, dict):
-            items = table.get("item")
-            if items is None:
-                # Envelope ama içeride farklı yapı varsa, dict olarak tek satır
-                return [table]
-            if isinstance(items, dict):
-                return [items]
-            if isinstance(items, list):
-                return [self._to_dict(r) for r in items]
+            if "item" in table:
+                # Envelope.item var → tablo içeriği. Boşsa (None/[]) BOŞ liste döndür;
+                # sahte tek-kayıt ([{item:None}]) ÜRETME (SAP veri dönmediğinde önemli).
+                items = table["item"]
+                if items is None:
+                    return []
+                if isinstance(items, dict):
+                    return [items]
+                if isinstance(items, list):
+                    return [self._to_dict(r) for r in items]
+                return []
+            # 'item' anahtarı YOK → envelope'u tek kayıt say (eski davranış korunur)
+            return [table]
         return []
 
     @staticmethod

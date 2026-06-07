@@ -18,8 +18,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-_client     = None
+_GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+_client       = None
 
 
 def _get_client():
@@ -30,7 +31,8 @@ def _get_client():
         raise RuntimeError("GEMINI_API_KEY tanımlı değil.")
     import google.generativeai as genai
     genai.configure(api_key=_GEMINI_KEY)
-    _client = genai.GenerativeModel("gemini-2.0-flash")
+    _client = genai.GenerativeModel(_GEMINI_MODEL)
+    print(f"[GEMINI] Model: {_GEMINI_MODEL}")
     return _client
 
 

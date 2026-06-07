@@ -68,7 +68,13 @@ def export_logs():
     logs = [{k: v for k, v in l.items() if k != "_sort_ts"} for l in AI_LOGS]
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id","user_id","question","model","tokens","latency","status","timestamp"])
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["id","user_id","question","model","tokens",
+                    "prompt_tokens","completion_tokens","llm_calls",
+                    "latency","status","timestamp"],
+        extrasaction="ignore",   # bilinmeyen ekstra anahtarları yoksay (hata verme)
+    )
     writer.writeheader()
     writer.writerows(logs)
 

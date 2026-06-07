@@ -31,7 +31,13 @@ def _save_to_session(session_id: str, user_question: str, result: dict):
             "chart_data" : result.get("chart_data", {}),
             "kpis"       : result.get("kpis", []),
             "highlights" : result.get("highlights", []),
+            "follow_ups" : result.get("follow_ups", []),
+            "sources"    : result.get("sources", []),
+            "metrics_used": result.get("metrics_used", []),
             "tables_used": result.get("tables_used", []),
+            "mode"       : result.get("mode"),
+            "live_success": result.get("live_success"),
+            "live_message": result.get("live_message"),
         }, ensure_ascii=False, default=str)
         cursor.execute(
             "INSERT INTO chat_messages (session_id, role, content, data_json) VALUES (?, 'assistant', ?, ?)",
@@ -71,30 +77,51 @@ def ask_question():
     if not question:
         return jsonify({"error": "Soru boş olamaz"}), 400
 
-    # Kullanıcı kimliğini token'dan çıkar (demo token: demo-token-{id}-{role})
-    token   = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = token.split("-")[2] if token.startswith("demo-token-") else "unknown"
+    # Kullanıcı kimliği + firma token'dan (demo-token-{id}-{role}-{company})
+    from app.services.tenant import user_id_from_request, company_from_request
+    user_id = user_id_from_request(request) or "unknown"
+    company = company_from_request(request)
 
     filters    = data.get("filters")    or {}
     session_id = data.get("session_id") or ""
 
     t_start = time.time()
-    result  = ask(question, filters=filters, session_id=session_id,
-                  user_id=user_id, approval_mode=True)
+    try:
+        result = ask(question, filters=filters, session_id=session_id,
+                     user_id=user_id, approval_mode=True, company=company)
+    except Exception as e:
+        from app.services.query_engine import OpenAIQuotaError
+        latency = int((time.time() - t_start) * 1000)
+        if isinstance(e, OpenAIQuotaError) or "insufficient_quota" in str(e).lower():
+            msg = ("⚠️ AI servisi kotası dolmuş (OpenAI insufficient_quota). "
+                   "Yöneticinin OpenAI faturalandırmasını yenilemesi gerekiyor. "
+                   "Bu geçici bir durumdur; sorgu motoru ve SAP bağlantısı çalışıyor.")
+        else:
+            print(f"[QUERY] ask() hata: {e}")
+            import traceback; traceback.print_exc()
+            msg = f"Sorgu işlenirken hata oluştu: {e}"
+        return jsonify({"error": msg, "summary": msg, "rows": [], "count": 0,
+                        "chart_type": "NONE", "tables_used": []}), 200
     latency = int((time.time() - t_start) * 1000)
 
     # Oturuma kaydet — pending_approval ise asistan yanıtı olarak özet+talep id'si yazılır
     _save_to_session(session_id, question, result)
 
-    # Gerçek sorguyu AI_LOGS'a ekle
+    # Gerçek sorguyu AI_LOGS'a ekle — GERÇEK token kullanımı (OpenAI .usage toplamı)
     status = "error" if result.get("error") else "success"
+    from app.services.query_engine import _usage_get
+    import os as _os
+    _usage = _usage_get()
     AI_LOGS.insert(0, {
         "id"       : f"LOG-{uuid.uuid4().hex[:8].upper()}",
         "user_id"  : user_id,
         "question" : question,
         "response" : result.get("summary", result.get("error", "")),
-        "model"    : "gpt-4o",
-        "tokens"   : result.get("count", 0) * 10 + 500,  # kaba tahmin
+        "model"    : _os.getenv("SQL_MODEL", "gpt-4o"),
+        "tokens"   : _usage.get("total_tokens", 0),       # gerçek toplam token
+        "prompt_tokens"    : _usage.get("prompt_tokens", 0),
+        "completion_tokens": _usage.get("completion_tokens", 0),
+        "llm_calls"        : _usage.get("llm_calls", 0),
         "latency"  : latency,
         "status"   : status,
         "timestamp": time.strftime("%d %b %H:%M"),

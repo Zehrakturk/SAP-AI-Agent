@@ -42,14 +42,22 @@ class IntegrationRepository:
             conn.close()
 
     # ─────────────────────────────────────────────────────────────────────
-    def list_active(self) -> list[IntegrationConfig]:
-        """Tüm aktif (is_active=1) entegrasyonları döner."""
+    def list_active(self, company: str | None = None) -> list[IntegrationConfig]:
+        """
+        Aktif (is_active=1) entegrasyonları döner.
+        company verilirse (ve 'ALL' değilse) yalnız o firmanınkiler.
+        """
         conn   = get_connection()
         cursor = conn.cursor()
         try:
             available_cols = self._available_columns(cursor, "integrations")
             select_cols    = ", ".join(f"[{c}]" for c in available_cols)
-            cursor.execute(f"SELECT {select_cols} FROM integrations WHERE is_active = 1")
+            where  = "WHERE is_active = 1"
+            params : list = []
+            if company and company != "ALL" and "company" in available_cols:
+                where += " AND company = ?"
+                params.append(company)
+            cursor.execute(f"SELECT {select_cols} FROM integrations {where}", params)
             rows = cursor.fetchall()
             configs = []
             for r in rows:

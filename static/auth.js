@@ -6,9 +6,9 @@
 const Auth = (() => {
 
   const DEMO_USERS = [
-    { username: 'admin',      password: 'admin123',   name: 'System Admin',   role: 'ADMIN',       dept: 'IT' },
-    { username: 'procurement',password: 'proc123',    name: 'Alice Müller',   role: 'PROCUREMENT',  dept: 'Procurement' },
-    { username: 'finance',    password: 'fin123',     name: 'Robert Kaya',    role: 'FINANCE',      dept: 'Finance' },
+    { username: 'admin',    password: 'admin123', name: 'System Admin',  role: 'ADMIN', company: 'ALL',      dept: 'IT' },
+    { username: 'warmhaus', password: 'warm123',  name: 'Warmhaus User', role: 'USER',  company: 'Warmhaus', dept: 'Lojistik' },
+    { username: 'beycelik', password: 'bey123',   name: 'Beyçelik User', role: 'USER',  company: 'Beycelik', dept: 'Üretim' },
   ];
 
   let currentUser = JSON.parse(sessionStorage.getItem('sap_ai_user') || 'null');
@@ -56,7 +56,30 @@ const Auth = (() => {
             </div>
 
             <h2 style="font-size:22px;font-weight:700;color:#111827;margin-bottom:4px;letter-spacing:-0.02em">Giriş Yap</h2>
-            <p style="font-size:13px;color:#6b7280;margin-bottom:24px">Portala erişmek için bilgilerinizi girin.</p>
+            <p style="font-size:13px;color:#6b7280;margin-bottom:18px">Firmanızı seçin ve bilgilerinizle giriş yapın.</p>
+
+            <!-- Firma seçici -->
+            <label style="display:block;font-size:12px;font-weight:600;color:#4b5563;margin-bottom:8px">Firma</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px">
+              <button type="button" class="login-company" data-company="Warmhaus" data-user="warmhaus"
+                style="padding:12px 6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;
+                       font-family:inherit;text-align:center;transition:all .15s">
+                <div style="font-size:20px;line-height:1;margin-bottom:5px">🔥</div>
+                <div style="font-size:12px;font-weight:700;color:#111827">Warmhaus</div>
+              </button>
+              <button type="button" class="login-company" data-company="Beycelik" data-user="beycelik"
+                style="padding:12px 6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;
+                       font-family:inherit;text-align:center;transition:all .15s">
+                <div style="font-size:20px;line-height:1;margin-bottom:5px">⚙️</div>
+                <div style="font-size:12px;font-weight:700;color:#111827">Beyçelik</div>
+              </button>
+              <button type="button" class="login-company" data-company="ALL" data-user="admin"
+                style="padding:12px 6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;
+                       font-family:inherit;text-align:center;transition:all .15s">
+                <div style="font-size:20px;line-height:1;margin-bottom:5px">🛡️</div>
+                <div style="font-size:12px;font-weight:700;color:#111827">Admin</div>
+              </button>
+            </div>
 
             <!-- Error -->
             <div id="login-error" style="display:none;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);
@@ -93,9 +116,11 @@ const Auth = (() => {
               onmouseout="this.style.background='#1a56db';this.style.transform='translateY(0)';this.style.boxShadow='none'"
             >Giriş Yap →</button>
 
-            <p style="font-size:12px;color:#9ca3af;margin-top:20px;text-align:center">
-              Demo: <code style="background:#f3f4f6;padding:2px 8px;border-radius:4px;color:#4b5563;font-size:11px">admin / admin123</code>
-            </p>
+            <div style="font-size:11px;color:#9ca3af;margin-top:18px;text-align:center;line-height:1.7">
+              <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">warmhaus / warm123</code> ·
+              <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">beycelik / bey123</code><br>
+              <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">admin / admin123</code>
+            </div>
 
           </div>
         </div>
@@ -104,29 +129,82 @@ const Auth = (() => {
 
     document.body.appendChild(overlay);
 
-    function attempt() {
-      const u = document.getElementById('login-user').value.trim();
-      const p = document.getElementById('login-pass').value;
-      const match = DEMO_USERS.find(x => x.username === u && x.password === p);
-      const errEl = document.getElementById('login-error');
-
-      if (!match) {
-        errEl.textContent = 'Invalid username or password.';
-        errEl.style.display = 'block';
-        document.getElementById('login-pass').value = '';
-        return;
-      }
-
-      currentUser = { username: match.username, name: match.name, role: match.role, dept: match.dept };
+    function _finish() {
       sessionStorage.setItem('sap_ai_user', JSON.stringify(currentUser));
       overlay.style.opacity = '0';
       overlay.style.transition = 'opacity .3s';
       setTimeout(() => { overlay.remove(); onSuccess(currentUser); }, 300);
     }
 
+    function _showError(msg) {
+      const errEl = document.getElementById('login-error');
+      errEl.textContent = msg || 'Geçersiz kullanıcı adı veya şifre.';
+      errEl.style.display = 'block';
+      document.getElementById('login-pass').value = '';
+    }
+
+    async function attempt() {
+      const u = document.getElementById('login-user').value.trim();
+      const p = document.getElementById('login-pass').value;
+
+      // 1) Gerçek backend login — token'ı (demo-token-{id}-{role}) buradan al.
+      //    Bu token admin onay yetkisi + kullanıcı kimliği için ŞART.
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ username: u, password: p }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('sap_ai_token', data.access_token);   // ← kritik
+          const usr = data.user || {};
+          currentUser = { username: usr.username || u, name: usr.name || u,
+                          role: usr.role || 'VIEWER', company: usr.company || 'ALL',
+                          dept: usr.department || '' };
+          _finish();
+          return;
+        }
+        // 401/diğer → backend'de olmayan demo kullanıcılar için fallback'e düş
+      } catch (e) {
+        // backend'e ulaşılamadı → aşağıda demo fallback
+      }
+
+      // 2) Fallback: backend yoksa istemci-taraflı demo + sentetik token
+      const match = DEMO_USERS.find(x => x.username === u && x.password === p);
+      if (!match) { _showError(); return; }
+      const idMap = { admin: 1, warmhaus: 10, beycelik: 11 };
+      const demoId = idMap[match.username] || 99;
+      localStorage.setItem('sap_ai_token', `demo-token-${demoId}-${match.role}-${match.company}`);
+      currentUser = { username: match.username, name: match.name, role: match.role,
+                      company: match.company, dept: match.dept };
+      _finish();
+    }
+
     document.getElementById('login-btn').addEventListener('click', attempt);
     document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
     document.getElementById('login-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-pass').focus(); });
+
+    // ── Firma seçici: highlight + kullanıcı adını otomatik doldur ──────────
+    const _COMP_ACCENT = { Warmhaus: '#ea580c', Beycelik: '#1a56db', ALL: '#7c3aed' };
+    function _selectCompany(btn) {
+      overlay.querySelectorAll('.login-company').forEach(b => {
+        b.style.borderColor = '#e5e7eb';
+        b.style.background   = '#fff';
+        b.style.boxShadow    = 'none';
+      });
+      const accent = _COMP_ACCENT[btn.dataset.company] || '#1a56db';
+      btn.style.borderColor = accent;
+      btn.style.background   = accent + '0d';
+      btn.style.boxShadow    = `0 0 0 3px ${accent}22`;
+      // kullanıcı adını doldur, şifreye odaklan
+      const userInput = document.getElementById('login-user');
+      userInput.value = btn.dataset.user;
+      document.getElementById('login-pass').focus();
+    }
+    overlay.querySelectorAll('.login-company').forEach(btn => {
+      btn.addEventListener('click', () => _selectCompany(btn));
+    });
 
     setTimeout(() => document.getElementById('login-user').focus(), 100);
   }
@@ -136,6 +214,14 @@ const Auth = (() => {
   // -------------------------------------------------------
   function guard(onAuth) {
     if (currentUser) {
+      // Önceki oturumda token yoksa (eski sürüm) sentetik demo token üret —
+      // aksi halde admin onay yetkisi / firma filtresi çalışmaz.
+      if (!localStorage.getItem('sap_ai_token')) {
+        const idMap = { admin: 1, warmhaus: 10, beycelik: 11 };
+        const demoId = idMap[currentUser.username] || 99;
+        const comp   = currentUser.company || 'ALL';
+        localStorage.setItem('sap_ai_token', `demo-token-${demoId}-${currentUser.role || 'USER'}-${comp}`);
+      }
       onAuth(currentUser);
     } else {
       showLogin(onAuth);
@@ -145,6 +231,7 @@ const Auth = (() => {
   function logout(onLogout) {
     currentUser = null;
     sessionStorage.removeItem('sap_ai_user');
+    localStorage.removeItem('sap_ai_token');
     if (onLogout) onLogout();
   }
 

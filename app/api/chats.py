@@ -68,11 +68,31 @@ except Exception as _e:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _current_user_id(req) -> str:
-    token = req.headers.get("Authorization", "").replace("Bearer ", "")
-    if token.startswith("demo-token-"):
-        parts = token.split("-")
-        return parts[2] if len(parts) > 2 else "unknown"
-    return "unknown"
+    """
+    Sohbet sahibini belirler. Tek doğruluk kaynağı `tenant.user_id_from_request`
+    (token formatı `demo-token-{id}-{role}-{company}`). Böylece auth değişiklikleri
+    sonrası user_id tutarlı kalır ve geçmiş "kaybolmaz".
+    """
+    from app.services.tenant import user_id_from_request
+    uid = user_id_from_request(req)
+    return str(uid) if uid not in (None, "") else "unknown"
+
+
+def _session_owner(cursor, session_id):
+    """Oturumun sahibini (user_id) döndürür; oturum yoksa None."""
+    cursor.execute("SELECT user_id FROM chat_sessions WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
+def _can_access(req, owner_id) -> bool:
+    """Sahibi olan veya global (ADMIN/ALL) kullanıcı erişebilir."""
+    if owner_id is None:
+        return False
+    from app.services.tenant import company_from_request, is_global
+    if is_global(company_from_request(req)):
+        return True
+    return str(owner_id) == _current_user_id(req)
 
 
 def _row_to_session(row, cols) -> dict:
@@ -128,6 +148,8 @@ def list_sessions():
 
     conn   = get_connection()
     cursor = conn.cursor()
+    # NOT: Kasıtlı olarak LIMIT/TOP YOK — kullanıcının TÜM sohbet geçmişi süresiz tutulur
+    # ve döner. Geçmiş yalnızca kullanıcı bir oturumu açıkça silerse kaybolur.
     cursor.execute("""
         SELECT s.id, s.user_id, s.title, s.tags, s.pinned,
                s.created_at, s.updated_at,
@@ -196,6 +218,9 @@ def get_session(session_id):
     conn.close()
     if not row:
         return jsonify({"error": "Oturum bulunamadı"}), 404
+    owner = dict(zip(cols, row)).get("user_id")
+    if not _can_access(request, owner):
+        return jsonify({"error": "Bu oturuma erişim yetkiniz yok"}), 403
     return jsonify(_row_to_session(row, cols))
 
 
@@ -207,8 +232,12 @@ def get_session(session_id):
 def get_messages(session_id):
     conn   = get_connection()
     cursor = conn.cursor()
+    if not _can_access(request, _session_owner(cursor, session_id)):
+        conn.close()
+        return jsonify({"error": "Bu oturuma erişim yetkiniz yok"}), 403
+    # NOT: LIMIT/TOP YOK — oturumdaki tüm mesajlar (tam geçmiş) kronolojik döner.
     cursor.execute(
-        "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC",
+        "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC, id ASC",
         (session_id,)
     )
     cols = [c[0] for c in cursor.description]
@@ -254,6 +283,10 @@ def add_message(session_id):
 def delete_session(session_id):
     conn   = get_connection()
     cursor = conn.cursor()
+    # Yalnız oturum sahibi (veya global admin) silebilir — başkasının geçmişi silinemez
+    if not _can_access(request, _session_owner(cursor, session_id)):
+        conn.close()
+        return jsonify({"error": "Bu oturumu silme yetkiniz yok"}), 403
     cursor.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
     cursor.execute("DELETE FROM chat_sessions  WHERE id = ?",        (session_id,))
     conn.commit()
@@ -270,6 +303,9 @@ def update_title(session_id):
     title = (request.get_json(force=True) or {}).get("title", "")[:500]
     conn  = get_connection()
     cursor = conn.cursor()
+    if not _can_access(request, _session_owner(cursor, session_id)):
+        conn.close()
+        return jsonify({"error": "Yetki yok"}), 403
     cursor.execute(
         "UPDATE chat_sessions SET title = ? WHERE id = ?",
         (title, session_id)
@@ -288,6 +324,9 @@ def toggle_pin(session_id):
     pinned = bool((request.get_json(force=True) or {}).get("pinned", True))
     conn   = get_connection()
     cursor = conn.cursor()
+    if not _can_access(request, _session_owner(cursor, session_id)):
+        conn.close()
+        return jsonify({"error": "Yetki yok"}), 403
     cursor.execute(
         "UPDATE chat_sessions SET pinned = ? WHERE id = ?",
         (1 if pinned else 0, session_id)
@@ -305,6 +344,11 @@ def toggle_pin(session_id):
 def update_tags(session_id):
     data = request.get_json(force=True) or {}
     tags = data.get("tags")
+    # Sahiplik kontrolü
+    _c = get_connection(); _cur = _c.cursor()
+    _owner = _session_owner(_cur, session_id); _c.close()
+    if not _can_access(request, _owner):
+        return jsonify({"error": "Yetki yok"}), 403
     # tags verilmezse başlıktan/ilk mesajdan otomatik üret
     if tags is None:
         conn   = get_connection()

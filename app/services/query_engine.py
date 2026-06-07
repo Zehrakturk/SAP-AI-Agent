@@ -25,7 +25,7 @@ from qdrant_client.models import ScoredPoint
 
 from app.services.db import get_connection, rows_as_dicts
 
-load_dotenv()
+load_dotenv(override=True)   # .env sistem ortam değişkenlerini ezsin (doğru API anahtarı)
 
 openai_client = OpenAI()
 
@@ -41,11 +41,64 @@ EMBED_MODEL       = "text-embedding-3-small"
 
 
 # -----------------------------------------------------------------------------
+# Gerçek token kullanımı sayacı (thread-local — istek başına)
+# OpenAI yanıtlarındaki .usage toplanır; query.py logta GERÇEK token'ı yazar.
+# -----------------------------------------------------------------------------
+import threading
+_usage = threading.local()
+
+
+class OpenAIQuotaError(RuntimeError):
+    """OpenAI kotası/bakiyesi bittiğinde (insufficient_quota) — kullanıcıya temiz mesaj için."""
+
+
+def _is_quota_error(msg: str) -> bool:
+    m = (msg or "").lower()
+    return "insufficient_quota" in m or "exceeded your current quota" in m
+
+
+def _usage_reset():
+    _usage.total = 0
+    _usage.prompt = 0
+    _usage.completion = 0
+    _usage.calls = 0
+
+
+def _usage_add(resp):
+    try:
+        u = resp.usage
+        _usage.total      = getattr(_usage, "total", 0)      + int(u.total_tokens or 0)
+        _usage.prompt     = getattr(_usage, "prompt", 0)     + int(u.prompt_tokens or 0)
+        _usage.completion = getattr(_usage, "completion", 0) + int(getattr(u, "completion_tokens", 0) or 0)
+        _usage.calls      = getattr(_usage, "calls", 0)      + 1
+    except Exception:
+        pass
+
+
+def _usage_get() -> dict:
+    return {
+        "total_tokens":      getattr(_usage, "total", 0),
+        "prompt_tokens":     getattr(_usage, "prompt", 0),
+        "completion_tokens": getattr(_usage, "completion", 0),
+        "llm_calls":         getattr(_usage, "calls", 0),
+    }
+
+
+# -----------------------------------------------------------------------------
 # Yardimcilar
 # -----------------------------------------------------------------------------
 
 def _embed(text: str) -> list[float]:
-    resp = openai_client.embeddings.create(model=EMBED_MODEL, input=text)
+    try:
+        resp = openai_client.embeddings.create(model=EMBED_MODEL, input=text)
+    except Exception as e:
+        if _is_quota_error(str(e)):
+            raise OpenAIQuotaError(
+                "OpenAI kotası/bakiyesi dolmuş (insufficient_quota). "
+                "Lütfen OpenAI faturalandırmasını kontrol edin."
+            ) from e
+        raise
+    _usage_add(resp)
     return resp.data[0].embedding
 
 
@@ -71,9 +124,17 @@ def _call_openai(prompt: str, max_tokens: int = 500, json_mode: bool = False,
     for attempt in range(5):
         try:
             resp = openai_client.chat.completions.create(**kwargs)
+            _usage_add(resp)
             return resp.choices[0].message.content.strip()
         except Exception as e:
-            if "429" in str(e):
+            msg = str(e)
+            # Kota/billing bitmişse RETRY ETME — kalıcı hata, boşuna bekleme + spam yapma
+            if _is_quota_error(msg):
+                raise OpenAIQuotaError(
+                    "OpenAI kotası/bakiyesi dolmuş (insufficient_quota). "
+                    "Lütfen OpenAI faturalandırmasını kontrol edin."
+                ) from e
+            if "429" in msg:   # geçici hız limiti → kısa backoff ile tekrar dene
                 wait = 2 ** attempt
                 print(f"[RATE LIMIT] {wait}s bekleniyor...")
                 time.sleep(wait)
@@ -229,12 +290,15 @@ def _retrieve_chunks(question: str, top_k: int = 5, threshold: float = 0.35) -> 
     vector = _embed(question)
 
     try:
-        hits: list[ScoredPoint] = qdrant.search(
+        # qdrant-client 1.12+ → query_points (eski .search kaldırıldı)
+        _resp = qdrant.query_points(
             collection_name=QDRANT_COLLECTION,
-            query_vector=vector,
+            query=vector,
             limit=top_k,
             score_threshold=threshold,
+            with_payload=False,
         )
+        hits: list[ScoredPoint] = _resp.points
     except Exception as e:
         print(f"[QDRANT] Arama hatasi: {e}")
         return []
@@ -272,33 +336,42 @@ def _retrieve_chunks(question: str, top_k: int = 5, threshold: float = 0.35) -> 
 # ADIM 2 — Eslesen integration_id'lerin semalarini cek
 # -----------------------------------------------------------------------------
 
-def _fetch_schemas(integration_ids: list[int]) -> list[dict]:
+def _fetch_schemas(integration_ids: list[int], company: str | None = None) -> list[dict]:
     """
     integration_schemas + integrations tablosundan schema_text getirir.
     integration_ids bossa tum aktif entegrasyonlar gelir (fallback).
+    company verilirse (ve 'ALL' degilse) yalniz o firmanin entegrasyonlari.
     """
     conn   = get_connection()
     cursor = conn.cursor()
 
+    # company kolonu var mı? (geriye uyum)
+    cursor.execute(
+        "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_NAME='integrations' AND COLUMN_NAME='company'"
+    )
+    has_company = cursor.fetchone() is not None
+    comp_filter = has_company and company and company != "ALL"
+
+    where  = ["i.is_active = 1"]
+    params : list = []
     if integration_ids:
         placeholders = ",".join("?" * len(integration_ids))
-        cursor.execute(
-            f"""
-            SELECT s.integration_id, s.target_table, s.schema_text, i.name
-            FROM   integration_schemas s
-            JOIN   integrations i ON i.id = s.integration_id
-            WHERE  s.integration_id IN ({placeholders})
-              AND  i.is_active = 1
-            """,
-            integration_ids,
-        )
-    else:
-        cursor.execute("""
-            SELECT s.integration_id, s.target_table, s.schema_text, i.name
-            FROM   integration_schemas s
-            JOIN   integrations i ON i.id = s.integration_id
-            WHERE  i.is_active = 1
-        """)
+        where.append(f"s.integration_id IN ({placeholders})")
+        params.extend(integration_ids)
+    if comp_filter:
+        where.append("i.company = ?")
+        params.append(company)
+
+    cursor.execute(
+        f"""
+        SELECT s.integration_id, s.target_table, s.schema_text, i.name
+        FROM   integration_schemas s
+        JOIN   integrations i ON i.id = s.integration_id
+        WHERE  {' AND '.join(where)}
+        """,
+        params,
+    )
 
     rows = cursor.fetchall()
     conn.close()
@@ -399,9 +472,443 @@ def _try_on_demand_fetch(integration_ids: list[int], intent: dict,
 _CACHE: dict[str, dict] = {}   # sorgu → zengin sonuç (process restart'ta sıfırlanır)
 
 
+def _analyze_rows(user_question: str, rows: list, tables_used: list,
+                  context_hint: str = "") -> dict:
+    """
+    Satır verisinden zengin analiz + görselleştirme paketi üretir
+    (summary / chart / kpis / highlights / follow_ups). Hem SQL hem CANLI sorgu kullanır.
+    context_hint: opsiyonel kolon/şema açıklaması — LLM'in kolonları (AMOUNT, PRICE vb.)
+    doğru yorumlaması için (özellikle canlı SAP verisinde önemli).
+    """
+    if not rows:
+        return {
+            "text_summary": "Belirtilen kriterlere uygun veri bulunamadı.",
+            "chart_type": "NONE", "chart_data": {}, "kpis": [],
+            "secondary_chart": None, "highlights": [], "follow_ups": [],
+        }
+    _hint = (f"\n\nKOLON AÇIKLAMALARI (doğru yorumla, uydurma hesap yapma; metin/etiketlerde "
+             f"TEKNİK KOLON ADLARINI değil TÜRKÇE İŞ TERİMLERİNİ kullan — "
+             f"ör. VENDOR→satıcı, ZTERM→ödeme koşulu, FISCPER→mali yıl):\n{context_hint}"
+             ) if context_hint else ""
+    report_prompt = f"""Sen bir kıdemli iş analistisin ve Power BI uzmanısın.
+Kullanıcının sorusuna karşılık aşağıdaki veri geldi. Bu veriyi analiz edip zengin bir
+görselleştirme paketi üret.
+
+Kullanıcı Sorusu: "{user_question}"
+Kaynak: {', '.join(tables_used)}{_hint}
+Veri ({len(rows)} kayıt, ilk 200 gösteriliyor):
+{json.dumps(rows[:200], ensure_ascii=False, default=str)}
+
+KURALLAR:
+- Karşılaştırma sorusuysa PRIMARY chart GROUPED BAR, secondary LINE.
+- Dağılım sorusuysa PRIMARY PIE, secondary BAR.
+- Zaman serisi / trend sorusuysa PRIMARY LINE (fill:true), secondary BAR.
+- Tekil liste sorusuysa PRIMARY yatay BAR (type: "bar", indexAxis: "y"), secondary TABLE.
+- datasets içinde birden fazla veri seti olabilir.
+- kpis: Her zaman 3-4 KPI üret (toplam, ortalama, maksimum, değişim%).
+- change: "+%12.3" / "-%5.1"; trend: "up" / "down".
+- highlights: 3 kısa Türkçe bulgu (emoji ile).
+- secondary_chart null olabilir ama mümkünse doldur.
+- follow_ups: bu veriye özel 3 KISA takip sorusu (Türkçe, max 8 kelime).
+
+Sadece geçerli JSON döndür:
+{{
+  "text_summary": "Kapsamlı Türkçe analiz (en az 3 cümle).",
+  "chart_type": "BAR veya LINE veya PIE",
+  "chart_data": {{"labels": ["E1","E2"], "datasets": [{{"label":"V1","data":[100,200]}}]}},
+  "kpis": [{{"label":"Toplam","value":"247","change":"+12.3%","trend":"up","color":"blue"}}],
+  "secondary_chart": {{"type":"LINE","title":"Detay","data":{{"labels":["1","2"],"datasets":[{{"label":"Ort.","data":[8.8,13.1]}}]}}}},
+  "highlights": ["📦 ...","🏆 ...","📍 ..."],
+  "follow_ups": ["...","...","..."]
+}}"""
+    try:
+        return json.loads(_call_openai(report_prompt, max_tokens=1800, json_mode=True,
+                                       model=_ANALYSIS_MODEL))
+    except Exception:
+        return {
+            "text_summary": "Analiz edilemedi.", "chart_type": "BAR", "chart_data": {},
+            "kpis": [], "secondary_chart": None, "highlights": [], "follow_ups": [],
+        }
+
+
+_TR_FOLD_QE = str.maketrans("ıİşŞğĞüÜöÖçÇ", "iissgguuoocc")
+
+
+def _norm_q(s: str) -> str:
+    return (s or "").lower().translate(_TR_FOLD_QE)
+
+
+_REPORT_KW = [
+    "rapor", "raporla", "grafik", "grafikle", "gorsel", "gorselle", "gorsellestir",
+    "cizdir", "pano", "dashboard", "pasta", "bar grafik", "infografik", "chart",
+    "kpi", "gosterge", "diyagram", "trend grafik",
+]
+_TABLE_KW = [
+    "listele", "liste", "tablo", "dokum", "satir satir", "kayitlari goster",
+    "hepsini goster", "tum kayitlar", "sirala", "goster",
+]
+
+
+def _output_mode(question: str) -> str:
+    """
+    Çıktı modu:
+      'report' → kullanıcı GÖRSEL/RAPOR istedi (grafik + KPI + tablo)
+      'table'  → kullanıcı LİSTE/TABLO istedi (sadece veri tablosu)
+      'text'   → (varsayılan) sadece analiz edip metinle cevap ver
+    """
+    qn = _norm_q(question)
+    if any(k in qn for k in _REPORT_KW):
+        return "report"
+    if any(k in qn for k in _TABLE_KW):
+        return "table"
+    return "text"
+
+
+def _answer_text(question: str, rows: list, context_hint: str = "") -> dict:
+    """Soruyu veriye dayanarak KISA ve NET metinle yanıtlar (grafik/KPI üretmez)."""
+    if not rows:
+        return {"text_summary": "Belirtilen kriterlere uygun veri bulunamadı.", "follow_ups": []}
+    hint = (f"\nKOLON AÇIKLAMALARI (sadık kal, uydurma hesap yapma; cevapta TEKNİK KOLON "
+            f"ADLARINI değil bu açıklamalardaki TÜRKÇE İŞ TERİMLERİNİ kullan — "
+            f"ör. VENDOR→satıcı, ZTERM→ödeme koşulu, FISCPER→mali yıl):\n{context_hint}"
+            ) if context_hint else ""
+    prompt = f"""Kullanıcının sorusunu, verilen veriye dayanarak DOĞRUDAN ve NET yanıtla (Türkçe).
+Kısa ve sohbet havasında ol; tablo/teknik döküm YAPMA. Sayısal cevabı net ver (örn. "80 TRY").
+Cevapta teknik kolon adı (VENDOR, ZTERM, FISCPER, PLANT...) KULLANMA; Türkçe iş terimi kullan.
+Birden çok kayıt varsa soruya uygun şekilde özetle/topla.{hint}
+
+Soru: "{question}"
+Veri ({len(rows)} kayıt, ilk 100):
+{json.dumps(rows[:100], ensure_ascii=False, default=str)}
+
+Yalnız geçerli JSON döndür:
+{{"text_summary": "net Türkçe cevap (1-4 cümle)", "follow_ups": ["kısa takip sorusu", "...", "..."]}}"""
+    try:
+        out = json.loads(_call_openai(prompt, max_tokens=600, json_mode=True, model=_ANALYSIS_MODEL))
+        return {"text_summary": out.get("text_summary", ""),
+                "follow_ups": (out.get("follow_ups") or [])[:3]}
+    except Exception:
+        return {"text_summary": "Veri alındı ancak özetlenemedi.", "follow_ups": []}
+
+
+def _compose_report(question: str, rows: list, tables_used: list,
+                    context_hint: str = "") -> tuple[dict, list]:
+    """
+    Çıktı moduna göre analiz paketini ve GÖSTERİLECEK satırları döndürür → (report, display_rows).
+    text → sadece metin (tablo gizli) · table → metin + tablo · report → tam görselleştirme.
+    """
+    mode = _output_mode(question)
+    if mode == "report":
+        return _analyze_rows(question, rows, tables_used, context_hint), rows
+    txt = _answer_text(question, rows, context_hint)
+    report = {
+        "text_summary": txt["text_summary"],
+        "chart_type": "TABLE" if mode == "table" else "NONE",
+        "chart_data": {}, "kpis": [], "secondary_chart": None,
+        "highlights": [], "follow_ups": txt["follow_ups"],
+    }
+    return report, (rows if mode == "table" else [])
+
+
+def _route_live(question: str, company: str | None, candidate_ids: list[int]) -> int | None:
+    """
+    CANLI (anlık) sorgu entegrasyonu yönlendirmesi — firma-kapsamlı + güvenilir.
+
+    Yalnız KULLANICININ FİRMASINDAKİ (veya global) live_query=true entegrasyonları dikkate alır
+    → canlı entegrasyonu olmayan firmalar (ör. Warmhaus) HİÇ etkilenmez.
+
+    Bir canlı entegrasyona yönlendirme sinyalleri (RAG skorundan bağımsız, güvenilir):
+      1. extra_config.keywords'ten biri soruda geçiyorsa (alan eşleşmesi), VEYA
+      2. RAG'ın en iyi adayı (candidate_ids[0]) bu canlı entegrasyonsa.
+    """
+    try:
+        conn = get_connection(); cur = conn.cursor()
+        # extra_config + company kolonları (geriye uyum)
+        has_company = cur.execute(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME='integrations' AND COLUMN_NAME='company'").fetchone() is not None
+        cur.execute("SELECT id, extra_config" + (", company" if has_company else "") +
+                    " FROM integrations WHERE is_active = 1")
+        rows = cur.fetchall(); conn.close()
+    except Exception as e:
+        print(f"[LIVE ROUTE] atlandı: {e}")
+        return None
+
+    from app.services.tenant import canonical_company
+    comp = canonical_company(company)
+    qn   = _norm_q(question)
+    top  = candidate_ids[0] if candidate_ids else None
+
+    live_list: list[tuple[int, list]] = []   # (iid, keywords) — firmanın canlı entegrasyonları
+    for r in rows:
+        iid = r[0]
+        raw = r[1]
+        icompany = r[2] if has_company and len(r) > 2 else None
+        # Firma izolasyonu: global admin (ALL) hariç, yalnız aynı firma
+        if comp not in (None, "", "ALL"):
+            if icompany and canonical_company(icompany) not in (comp, "ALL"):
+                continue
+        try:
+            cfg = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            cfg = {}
+        if cfg.get("live_query"):
+            live_list.append((iid, cfg.get("keywords") or []))
+
+    if not live_list:
+        return None
+
+    # 1) UCUZ sinyaller (LLM'siz): anahtar kelime alan eşleşmesi VEYA RAG en iyi adayı
+    for iid, kws in live_list:
+        if any(_norm_q(k) in qn for k in kws if k):
+            return iid
+        if top is not None and iid == top:
+            return iid
+
+    # 2) YEDEK sinyal: ucuz sinyaller tutmadı → sorudan canlı entegrasyon parametreleri
+    #    çıkarılabiliyorsa (malzeme/plant/satıcı gibi) bu entegrasyona yönlendir.
+    from app.repositories.integration_repository import IntegrationRepository
+    for iid, _kws in live_list:
+        try:
+            cfg = IntegrationRepository().get_with_params(iid)
+            if _extract_live_params(cfg, question):
+                print(f"[LIVE ROUTE] param-çıkarımı eşleşti → id={iid}")
+                return iid
+        except Exception:
+            continue
+    return None
+
+
+def _extract_live_params(config, question: str) -> dict:
+    """Sorudan SAP fonksiyon parametre değerlerini çıkarır (sadece açıkça geçenler)."""
+    plist = list(config.params or [])
+    if not plist:
+        return {}
+    desc = "\n".join(
+        f"- {p.param_name.lower()}: {p.description or p.param_name} (tip: {p.param_type})"
+        for p in plist
+    )
+    prompt = (
+        "Görevin: kullanıcı sorusundaki SOMUT değerleri ilgili SAP parametresine ata.\n"
+        "KURALLAR:\n"
+        "- Malzeme kodu, üretim yeri (plant), satıcı no gibi NET tanımlayıcılar soruda "
+        "geçiyorsa MUTLAKA ilgili parametreye ekle.\n"
+        "- Her parametrenin açıklamasındaki FORMAT/İSTİSNA kuralına uy; açıklama belirli bir "
+        "durumda 'boş bırak' diyorsa o parametreyi EKLEME.\n"
+        "- Soruda hiç geçmeyen parametreyi EKLEME.\n\n"
+        "ÖRNEK:\n"
+        "Parametreler: iv_material (malzeme kodu), iv_plant (üretim yeri), "
+        "iv_fiscper (mali yıl/dönem; bir YIL belirtilirse 4 haneli yılı yaz), iv_vendor (satıcı no)\n"
+        'Soru: "ABC-123 malzemesi 1000 üretim yerinde 2024 yılı alımları nedir"\n'
+        'Cevap: {"iv_material":"ABC-123","iv_plant":"1000","iv_fiscper":"2024"}\n'
+        'Soru: "2023 mali yılında en yüksek birim fiyatlı malzeme"\n'
+        'Cevap: {"iv_fiscper":"2023"}\n\n'
+        "ŞİMDİ:\n"
+        f"Parametreler:\n{desc}\n"
+        f'Soru: "{question}"\n\n'
+        "Yalnız geçerli JSON döndür; anahtarlar parametre adının küçük harfli hali olsun."
+    )
+    try:
+        out = json.loads(_call_openai(prompt, max_tokens=300, json_mode=True))
+        valid = {p.param_name.lower() for p in plist}
+        return {k: v for k, v in out.items() if k in valid and v not in (None, "")}
+    except Exception as e:
+        print(f"[LIVE] param çıkarımı atlandı: {e}")
+        return {}
+
+
+def _normalize_live_params(config, extracted: dict) -> dict:
+    """
+    Canlı parametre normalizasyonu. Mali dönem (FISCPER) alanına SADECE 4 haneli yıl
+    geldiyse 7 haneli forma (YYYY001) çevirir — bu BW modelinde yıllık veri 001 döneminde
+    tutulur ('2023' → 0 kayıt, '2023001' → tüm yıl). LLM ne üretirse üretsin garanti eder.
+    """
+    import re as _re
+    out = dict(extracted)
+    fisc_names = {(p.param_name or "").lower() for p in config.params
+                  if "FISC" in (p.param_name or "").upper() or "PER" in (p.param_name or "").upper()}
+    for k, v in list(out.items()):
+        if k in fisc_names and _re.fullmatch(r"\d{4}", str(v or "").strip()):
+            out[k] = f"{str(v).strip()}001"
+    return out
+
+
+def _sort_live_for_ranking(question: str, records: list) -> list:
+    """
+    Soru bir SIRALAMA sorusuysa (en yüksek/en düşük ...), kayıtları VERİDEKİ MEVCUT alana
+    göre sıralar — böylece LLM'e giden ilk satırlar doğru cevabı içerir (binlerce kayıtta
+    truncation sorununu çözer). Birim fiyat zaten PRICE alanında; hesaplama YAPILMAZ.
+      - "tutar/harcama" geçiyorsa AMOUNT'a göre, aksi halde PRICE (birim fiyat) göre.
+    """
+    if not records:
+        return records
+    qn = _norm_q(question)
+    is_ranking = any(k in qn for k in
+                     ["en yuksek", "en pahali", "en dusuk", "en ucuz", "en buyuk",
+                      "en kucuk", "siralama", "sirala", "en cok", "en az"])
+    if not is_ranking:
+        return records
+
+    field = "AMOUNT" if any(k in qn for k in ["tutar", "harcama", "toplam"]) else "PRICE"
+    if not any(field in r for r in records):
+        return records
+
+    def _num(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    asc = any(k in qn for k in ["en dusuk", "en ucuz", "en kucuk", "en az"])
+    return sorted(records,
+                  key=lambda r: (_num(r.get(field)) is None, _num(r.get(field)) or 0),
+                  reverse=not asc)
+
+
+# ── Oturum-bazlı CANLI veri önbelleği (drill-down sorularında SAP'ı tekrar çağırma) ──
+_LIVE_CACHE: dict = {}          # session_id -> {integration_id, params, records, last_material, ts}
+_LIVE_CACHE_MAX = 50
+_LIVE_COLMAP = {"iv_material": "MATERIAL", "iv_vendor": "VENDOR",
+                "iv_plant": "PLANT", "iv_fiscper": "FISCPER"}
+
+
+def _live_cache_get(session_id, integration_id):
+    c = _LIVE_CACHE.get(session_id or "")
+    return c if (c and c.get("integration_id") == integration_id) else None
+
+
+def _live_cache_put(session_id, integration_id, params, records):
+    if not session_id:
+        return
+    if len(_LIVE_CACHE) >= _LIVE_CACHE_MAX:
+        oldest = min(_LIVE_CACHE, key=lambda k: _LIVE_CACHE[k].get("ts", 0))
+        _LIVE_CACHE.pop(oldest, None)
+    _LIVE_CACHE[session_id] = {
+        "integration_id": integration_id, "params": dict(params),
+        "records": records, "last_material": params.get("iv_material"),
+        "ts": time.time(),
+    }
+
+
+def _no_conflict(cached_params: dict, new_params: dict) -> bool:
+    """Ortak filtre anahtarlarında değerler eşleşiyorsa önbellek yeni soruyu kapsar."""
+    for k, v in (new_params or {}).items():
+        if k in cached_params and str(cached_params[k]).strip() != str(v).strip():
+            return False
+    return True
+
+
+def _filter_records(records: list, params: dict) -> list:
+    out = records
+    for k, v in (params or {}).items():
+        col = _LIVE_COLMAP.get(k)
+        if not col or v in (None, ""):
+            continue
+        vv = str(v).strip()
+        out = [r for r in out if str(r.get(col, "")).strip() == vv]
+    return out
+
+
+def _answer_live(integration_id: int, user_question: str,
+                 session_id: str = "", force_fresh: bool = False) -> dict:
+    """
+    CANLI sorgu yanıtı: parametreleri çıkar → (önbellekte uygun veri yoksa) servisi o an
+    çağır → EV_SUCCESS/EV_MESSAGE'a göre cevapla. DRILL-DOWN: aynı oturumda uyumlu bir
+    veri seti zaten çekildiyse SAP'a TEKRAR GİTMEZ; önbellekten firma-içi filtreleyip yanıtlar.
+    """
+    from app.repositories.integration_repository import IntegrationRepository
+    from app.services.fetchers import query_integration_live
+
+    config    = IntegrationRepository().get_with_params(integration_id)
+    extracted = _extract_live_params(config, user_question)
+    extracted = _normalize_live_params(config, extracted)   # yıl → YYYY001 vb.
+
+    cached = None if force_fresh else _live_cache_get(session_id, integration_id)
+
+    # "aynı/bu/o malzeme" gibi eliptik referansı önceki odaktan (last_material) çöz
+    if cached and "iv_material" not in extracted and cached.get("last_material"):
+        qn = _norm_q(user_question)
+        if any(p in qn for p in ["ayni malzeme", "bu malzeme", "o malzeme",
+                                  "ayni malzemeyi", "bu malzemeyi", "ayni urun", "bu urun"]):
+            extracted["iv_material"] = cached["last_material"]
+
+    from_cache = bool(cached) and _no_conflict(cached["params"], extracted)
+
+    if from_cache:
+        # SAP'a GİTME — önbellekteki geniş veri setini soruya göre filtrele
+        records = _filter_records(cached["records"], extracted)
+        success, message = True, f"(önbellekten {len(cached['records'])} kayıt)"
+        pseudo_sql = f"-- ÖNBELLEK (SAP'a gidilmedi): {config.service_method} filtre={extracted}"
+        print(f"[LIVE CACHE] oturum={session_id} → SAP'a gidilmedi, "
+              f"{len(cached['records'])} kayıttan {len(records)} filtrelendi")
+        # son odak malzemeyi güncelle (drill-down zinciri için)
+        if extracted.get("iv_material"):
+            cached["last_material"] = extracted["iv_material"]
+    else:
+        pseudo_sql = f"-- CANLI SAP sorgusu: {config.service_method}({extracted})"
+        print(f"[LIVE] {config.name} → {config.service_method}({extracted})")
+        res = query_integration_live(integration_id, extracted)
+        if res.get("status") == "error":
+            return {
+                "mode": "live", "live_success": False,
+                "error": f"Canlı SAP sorgusu başarısız: {res.get('message')}",
+                "summary": f"❌ Servise bağlanılamadı veya hata döndü: {res.get('message')}",
+                "rows": [], "count": 0, "chart_type": "NONE", "chart_data": {},
+                "kpis": [], "highlights": [], "follow_ups": [],
+                "tables_used": [config.name], "integration_names": [config.name],
+                "sql": pseudo_sql,
+            }
+        success = res.get("success", True)
+        message = res.get("message") or ""
+        records = res.get("records") or []
+        # Başarılı ve veri varsa oturum önbelleğine al (sonraki drill-down'lar için)
+        if success and records:
+            _live_cache_put(session_id, integration_id, extracted, records)
+
+    if not success:
+        return {
+            "mode": "live", "live_success": False, "live_message": message,
+            "summary": f"⚠️ SAP servisi hata bildirdi: {message or 'EV_SUCCESS=false'}",
+            "rows": [], "count": 0, "chart_type": "NONE", "chart_data": {},
+            "kpis": [], "highlights": [], "follow_ups": [],
+            "tables_used": [config.name], "integration_names": [config.name],
+            "sql": pseudo_sql,
+        }
+
+    records = _sort_live_for_ranking(user_question, records)  # sıralama sorularında üste taşı
+
+    _hint = (config.schema_text or "")[:1500]
+    if any(isinstance(r, dict) and "SATICI_ADI" in r for r in records):
+        _hint += ("\n- SATICI_ADI → Satıcı (tedarikçi) ADI. Kullanıcıya satıcıyı VENDOR koduyla "
+                  "DEĞİL, SATICI_ADI ile göster ve satıcılardan SATICI_ADI üzerinden bahset.")
+    report, display_rows = _compose_report(
+        user_question, records, [config.name], context_hint=_hint,
+    )
+    summary = report.get("text_summary", "")
+    if message:
+        summary = f"{summary}\n\nℹ️ {message}"
+
+    return {
+        "mode": "live", "live_success": True, "live_message": message,
+        "from_cache": from_cache,
+        "sql": pseudo_sql,
+        "rows": display_rows[:500], "count": len(records),
+        "summary": summary,
+        "chart_type": report.get("chart_type", "NONE"),
+        "chart_data": report.get("chart_data", {}),
+        "kpis": report.get("kpis", []),
+        "secondary_chart": report.get("secondary_chart"),
+        "highlights": report.get("highlights", []),
+        "follow_ups": report.get("follow_ups", [])[:3],
+        "tables_used": [config.name], "integration_names": [config.name],
+        "metrics_used": [],
+    }
+
+
 def ask(user_question: str, filters: dict | None = None,
         session_id: str | None = None, user_id: str | None = None,
-        approval_mode: bool = False, force_fresh: bool = False) -> dict:
+        approval_mode: bool = False, force_fresh: bool = False,
+        company: str | None = None) -> dict:
     """
     Donus:
     {
@@ -418,6 +925,20 @@ def ask(user_question: str, filters: dict | None = None,
     }
     """
     filters = filters or {}
+    _usage_reset()   # bu istek için gerçek token sayacını sıfırla
+
+    # -- 0. Niyet yönlendirme: bilgi/nasıl sorusu mu? → PDF-RAG (Belgeler) --------
+    #    approval_mode=True yalnızca kullanıcı sohbetinde gelir (worker rerun'da False).
+    #    force_fresh (worker rerun) bilgi yönlendirmesini atlar → veri hattı çalışır.
+    if approval_mode and not force_fresh:
+        try:
+            from app.services.doc_rag import classify_intent, answer_question
+            if classify_intent(user_question) == "knowledge":
+                print(f"[ROUTER] '{user_question[:40]}...' → KNOWLEDGE (PDF-RAG)")
+                return answer_question(user_question, company or "ALL")
+        except Exception as _re:
+            print(f"[ROUTER] yönlendirme atlandı: {_re}")
+
     _filter_str = json.dumps(filters, sort_keys=True) if filters else ""
     # session_id cache key'e GİRMEZ — aynı soru farklı oturumlarda farklı
     # bağlam çözümleyebilir, bu yüzden multi-turn modda cache'i bypass et.
@@ -446,23 +967,60 @@ def ask(user_question: str, filters: dict | None = None,
 
     print(f"[RAG] Eslesen integration_id: {matched_ids}")
 
-    # -- 2. Sema metinlerini cek ---------------------------------------------
-    schemas = _fetch_schemas(matched_ids)
+    # -- 2. Sema metinlerini cek (FİRMA filtreli) ----------------------------
+    schemas = _fetch_schemas(matched_ids, company)
     if not schemas:
-        return {"error": "DB'de aktif entegrasyon/sema bulunamadi.", "tables_used": []}
+        # RAG eşleşmesi firma dışıysa → firmanın tüm aktif şemalarına düş
+        schemas = _fetch_schemas([], company)
+    if not schemas:
+        return {"error": "Bu firma için aktif entegrasyon/şema bulunamadı.", "tables_used": []}
 
     tables_used        = [s["table"]            for s in schemas]
     integration_names  = list({s["integration_name"] for s in schemas})
-    # RAG eşleşmesi boşsa (fallback'te tüm şemalar geldiyse) gap tespiti için
-    # aday entegrasyonları şemalardan türet → "veri yok → onay" akışı yine çalışsın.
+    # Aday entegrasyonlar firma şemalarıyla sınırlı (firma dışı id sızmaz).
     schema_ids    = [s["integration_id"] for s in schemas]
-    candidate_ids = matched_ids or schema_ids
+    candidate_ids = [i for i in matched_ids if i in schema_ids] or schema_ids
     print(f"[RAG] Kullanilan tablolar: {tables_used} | Entegrasyonlar: {integration_names}")
+
+    # -- 2b. CANLI (anlık) sorgu entegrasyonu mu? (SQL yok, o an SOAP'tan çek) ----
+    # Firma-kapsamlı + anahtar-kelime tabanlı güvenilir yönlendirme (RAG'a bağımlı değil).
+    _live_iid = _route_live(user_question, company, candidate_ids)
+    if _live_iid:
+        print(f"[ROUTER] '{user_question[:40]}...' → CANLI SORGU (id={_live_iid})")
+        # session_id → aynı veri seti üzerine drill-down sorularında SAP'ı tekrar çağırma,
+        # oturum önbelleğinden filtreleyerek cevapla.
+        return _answer_live(_live_iid, user_question,
+                            session_id=session_id, force_fresh=force_fresh)
 
     combined_schema = "\n\n".join(
         f"=== Tablo: {s['table']} (Entegrasyon: {s['integration_name']}) ===\n{s['schema_text']}"
         for s in schemas
     )
+
+    # Rollup (özet) tablo ipucu — trend/eski-dönem sorgularını rollup'a yönlendirir
+    try:
+        from app.services.lifecycle.rollup import rollup_hint_for
+        _rollup_hint = rollup_hint_for(list(dict.fromkeys(tables_used)))
+    except Exception as _re:
+        print(f"[ROLLUP HINT] atlandı: {_re}")
+        _rollup_hint = ""
+    if _rollup_hint:
+        combined_schema += "\n" + _rollup_hint
+
+    # Semantic Layer — firma + entegrasyon kapsamlı metrik sözlüğü
+    _metric_block  = ""
+    _metrics_used  = []
+    try:
+        from app.services import semantic_layer
+        _metrics = semantic_layer.fetch_for(company, candidate_ids)
+        _metric_block = semantic_layer.format_for_prompt(_metrics)
+        _metrics_used = semantic_layer.detect_used(user_question, _metrics)
+        if _metric_block:
+            combined_schema += "\n" + _metric_block
+        if _metrics_used:
+            print(f"[SEMANTIC] kullanılan metrikler: {[m['key'] for m in _metrics_used]}")
+    except Exception as _se:
+        print(f"[SEMANTIC] metrik enjeksiyonu atlandı: {_se}")
 
     rag_context = ""
     if chunks:
@@ -671,90 +1229,19 @@ SQL:"""
                     "highlights"       : [],
                     "tables_used"      : tables_used,
                     "integration_names": integration_names,
+                    "metrics_used"     : _metrics_used,
                 }
             # Gap yok → gerçekten veri yok; normal boş sonuç akışına devam
         else:
             rows = _try_on_demand_fetch(candidate_ids, intent, sql, tables_used)
 
-    # -- 5. Zengin analiz + görselleştirme ------------------------------------
-    if rows:
-        report_prompt = f"""Sen bir kıdemli lojistik analistsin ve Power BI uzmanısın.
-Kullanıcının sorusuna verilen SQL sorgusu çalıştırıldı ve aşağıdaki veriler geldi.
-Bu verileri analiz edip zengin bir görselleştirme paketi üret.
-
-Kullanıcı Sorusu: "{user_question}"
-Kullanılan Tablolar: {', '.join(tables_used)}
-Veri ({len(rows)} kayıt, ilk 200 gösteriliyor):
-{json.dumps(rows[:200], ensure_ascii=False, default=str)}
-
-KURALLAR:
-- Karşılaştırma sorusuysa (iki dönem, iki grup vb.) PRIMARY chart GROUPED BAR olsun, secondary LINE olsun.
-- Dağılım sorusuysa PRIMARY PIE, secondary BAR.
-- Zaman serisi / trend sorusuysa PRIMARY LINE (fill:true), secondary BAR.
-- Tekil liste sorusuysa PRIMARY yatay BAR (type: "bar", indexAxis: "y"), secondary TABLE.
-- datasets içinde birden fazla veri seti olabilir (gruplu karşılaştırma için).
-- kpis: Her zaman 3-4 adet KPI üret. Sayısal değerler için toplam, ortalama, maksimum, değişim yüzdesi hesapla.
-- change alanı: "+%12.3" veya "-%5.1" formatında, trend: "up" veya "down".
-- highlights: 3 adet kısa Türkçe bulgu cümlesi (emoji ile).
-- secondary_chart null olabilir ama mümkünse doldur.
-
-Sadece geçerli JSON döndür:
-{{
-  "text_summary": "Kapsamlı Türkçe analiz metni. Farkları, yüzdeleri, öne çıkan değerleri belirt. En az 3 cümle.",
-  "chart_type": "BAR veya LINE veya PIE",
-  "chart_data": {{
-    "labels": ["Etiket1", "Etiket2"],
-    "datasets": [
-      {{"label": "Veri Seti 1", "data": [100, 200]}},
-      {{"label": "Veri Seti 2", "data": [150, 180]}}
-    ]
-  }},
-  "kpis": [
-    {{"label": "Toplam Sevkiyat", "value": "247", "change": "+12.3%", "trend": "up", "color": "blue"}},
-    {{"label": "Haftalık Ort.", "value": "61.8", "change": "+8.1%", "trend": "up", "color": "green"}},
-    {{"label": "En Yüksek Gün", "value": "43", "change": null, "trend": null, "color": "amber"}},
-    {{"label": "Değişim", "value": "%+49", "change": null, "trend": "up", "color": "red"}}
-  ],
-  "secondary_chart": {{
-    "type": "LINE",
-    "title": "Günlük Dağılım",
-    "data": {{
-      "labels": ["1.Hafta", "2.Hafta"],
-      "datasets": [{{"label": "Günlük Ort.", "data": [8.8, 13.1]}}]
-    }}
-  }},
-  "highlights": [
-    "📦 1. haftada 62, 2. haftada 91 sevkiyat gerçekleşti — %46.8 artış",
-    "🏆 En yoğun gün 8 Nisan ile 18 sevkiyat",
-    "📍 İstanbul en çok sevkiyat yapılan şehir (%34)"
-  ]
-}}"""
-
-        try:
-            report = json.loads(_call_openai(report_prompt, max_tokens=1800, json_mode=True,
-                                             model=_ANALYSIS_MODEL))
-        except Exception:
-            report = {
-                "text_summary"    : "Analiz edilemedi.",
-                "chart_type"      : "BAR",
-                "chart_data"      : {},
-                "kpis"            : [],
-                "secondary_chart" : None,
-                "highlights"      : [],
-            }
-    else:
-        report = {
-            "text_summary"    : "Belirtilen kriterlere uygun veri bulunamadı.",
-            "chart_type"      : "NONE",
-            "chart_data"      : {},
-            "kpis"            : [],
-            "secondary_chart" : None,
-            "highlights"      : [],
-        }
+    # -- 5. Çıktı moduna göre cevap: text (varsayılan) / table / report -------
+    # Kullanıcı "göster/grafik/rapor/görsel" demedikçe sadece metinle analiz edip yanıtla.
+    report, display_rows = _compose_report(user_question, rows, tables_used)
 
     result = {
         "sql"              : sql,
-        "rows"             : rows,
+        "rows"             : display_rows,
         "count"            : len(rows),
         "summary"          : report.get("text_summary", ""),
         "chart_type"       : report.get("chart_type", "NONE"),
@@ -762,8 +1249,10 @@ Sadece geçerli JSON döndür:
         "kpis"             : report.get("kpis", []),
         "secondary_chart"  : report.get("secondary_chart"),
         "highlights"       : report.get("highlights", []),
+        "follow_ups"       : report.get("follow_ups", [])[:3],
         "tables_used"      : tables_used,
         "integration_names": integration_names,
+        "metrics_used"     : _metrics_used,
         "rag_chunks"       : [c["chunk_text"] for c in chunks],
     }
 

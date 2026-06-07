@@ -113,6 +113,144 @@ def fetch_integration(integration_id: int,
                 "extracted_params": extracted_params}
 
 
+def _table_items(node):
+    """SAP envelope tablosundan satırları çıkarır ({item:[...]} / liste / tekil)."""
+    if isinstance(node, dict) and "item" in node:
+        it = node["item"]
+        if it is None:
+            return []
+        return it if isinstance(it, list) else [it]
+    if isinstance(node, list):
+        return node
+    return []
+
+
+_VENDOR_TABLE_KEYS = ("ET_RETURN_VENDOR", "ET_VENDOR", "ET_LIFNR", "ET_RETURN_LIFNR")
+_VENDOR_CODE_FIELDS = ("VENDOR", "LIFNR")
+_NAME_HINTS = ("NAME", "BEZEI", "TXT", "TEXT", "VTEXT", "ADI", "TITLE", "UNVAN")
+
+
+def _build_vendor_name_map(raw: dict) -> dict:
+    """
+    ET_RETURN_VENDOR (satıcı kodu → satıcı adı) tablosundan eşleme üretir.
+    Alan adları sabit değildir: anahtar = VENDOR/LIFNR; isim = ad-benzeri (NAME/TXT/BEZEI…)
+    veya VENDOR dışındaki ilk dolu metin alanı.
+    """
+    node = None
+    if isinstance(raw, dict):
+        for k in _VENDOR_TABLE_KEYS:
+            if raw.get(k) is not None:
+                node = raw[k]
+                break
+    if node is None:
+        return {}
+    out = {}
+    for r in _table_items(node):
+        if not isinstance(r, dict):
+            continue
+        code = ""
+        for kf in r:
+            if kf.upper() in _VENDOR_CODE_FIELDS:
+                code = str(r.get(kf) or "").strip()
+                break
+        if not code:
+            continue
+        name = None
+        for kf in r:                         # önce ad-benzeri alan
+            if kf.upper() in _VENDOR_CODE_FIELDS:
+                continue
+            val = r.get(kf)
+            if val in (None, ""):
+                continue
+            if any(h in kf.upper() for h in _NAME_HINTS):
+                name = str(val).strip()
+                break
+        if name is None:                     # yoksa VENDOR dışı ilk dolu alan
+            for kf in r:
+                if kf.upper() in _VENDOR_CODE_FIELDS:
+                    continue
+                if r.get(kf) not in (None, ""):
+                    name = str(r.get(kf)).strip()
+                    break
+        if name:
+            out[code] = name
+    return out
+
+
+def query_integration_live(integration_id: int,
+                           extracted_params: dict | None = None) -> dict:
+    """
+    CANLI (anlık) sorgu — SQL'e YAZMADAN servisten o an veri çeker.
+    Cache yok, DataWriter yok, fetch_log yok. SAP skalar dönüşleri (EV_SUCCESS/EV_MESSAGE/
+    EV_COUNT) ham yanıttan çıkarılır.
+
+    Döner:
+      {"status":"ok","records":[...],"success":bool,"message":str|None,
+       "count":int,"call_params":{...}}  ya da  {"status":"error","message":...}
+    """
+    extracted_params = extracted_params or {}
+    try:
+        repo    = _get_repo()
+        config  = repo.get_with_params(integration_id)
+
+        # CANLI çağrıda TÜM parametreler gönderilir (verilmeyenler BOŞ STRING) →
+        # SAP envelope'u beklenen biçimde oluşur: <IV_FISCPER></IV_FISCPER> gibi tüm
+        # IV_* elemanları mevcut. (Mapper aksi halde boşları atlar, eksik eleman gönderir.)
+        full = dict(extracted_params)
+        for p in config.params:
+            k = (p.param_name or "").lower()
+            if k and k not in full:
+                full[k] = ""
+
+        context = FetchContext.from_extracted(full)
+        fetcher = FetcherFactory.create(config)
+        print(f"[LIVE] {config.name} ({config.service_type}) ← extracted={full}")
+
+        result = fetcher.fetch(context)
+        raw    = result.raw_response or {}
+
+        def _g(*keys):
+            if isinstance(raw, dict):
+                for k in keys:
+                    if raw.get(k) is not None:
+                        return raw[k]
+            return None
+
+        success_raw = _g("EV_SUCCESS", "EV_SUCESS", "SUCCESS")
+        success = (str(success_raw).strip().upper() in ("X", "TRUE", "1", "S", "Y", "E")
+                   if success_raw is not None else True)
+        message = _g("EV_MESSAGE", "MESSAGE", "EV_MSG")
+        count   = _g("EV_COUNT", "COUNT")
+
+        # ET_RETURN_VENDOR varsa: VENDOR kodunu satıcı ADIYLA eşleştir → kayıtlara SATICI_ADI ekle
+        vmap = _build_vendor_name_map(raw)
+        if vmap:
+            matched = 0
+            for rec in result.records:
+                if not isinstance(rec, dict):
+                    continue
+                code = str(rec.get("VENDOR") or "").strip()
+                if code and code in vmap:
+                    rec["SATICI_ADI"] = vmap[code]
+                    matched += 1
+            print(f"[LIVE] ET_RETURN_VENDOR: {len(vmap)} satıcı adı, {matched} kayıt eşleşti")
+
+        return {
+            "status": "ok",
+            "records": result.records,
+            "vendor_map": vmap,
+            "success": success,
+            "message": message,
+            "count": int(count) if count is not None else len(result.records),
+            "call_params": result.call_params,
+        }
+    except FetcherError as e:
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
 def _safe_attempt_params(integration_id: int, extracted_params: dict) -> dict:
     """
     Hata durumunda debug için: param mapper'ın ne üreteceğini hesaplar.
@@ -127,22 +265,37 @@ def _safe_attempt_params(integration_id: int, extracted_params: dict) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def fetch_all_active() -> dict:
+def fetch_all_active(incremental: bool = True) -> dict:
     """
-    is_active=1 olan tüm entegrasyonları varsayılan parametrelerle çeker.
-    Scheduled job için ideal — her entegrasyon kendi defaults'unu kullanır.
+    is_active=1 olan tüm entegrasyonları çeker.
+    incremental=True (varsayılan): her entegrasyon için watermark'tan (hedef tablodaki
+      en son tarih) itibaren YALNIZ yeni veri çekilir → tekrar çekme/şişme önlenir.
+      Tarih param'ı / verisi olmayanlar otomatik kendi defaults'una düşer.
+    incremental=False: eski davranış — herkes defaults ({}) ile.
     """
     repo    = _get_repo()
     results = {}
 
     for config in repo.list_active():
         try:
+            # Canlı (anlık) sorgu entegrasyonları gece çekilmez — SQL'e yazılmaz
+            if (config.extra_config or {}).get("live_query"):
+                results[config.name] = {"status": "skipped", "reason": "live_query"}
+                continue
+            extracted = {}
+            if incremental:
+                try:
+                    from app.services.lifecycle.watermark import incremental_params
+                    extracted = incremental_params(config)
+                except Exception as we:
+                    print(f"[INCREMENTAL] {config.name} watermark atlandı: {we}")
+                    extracted = {}
             res = fetch_integration(
                 integration_id   = config.id,
-                extracted_params = {},   # defaults kullanılır
+                extracted_params = extracted,
                 force            = False,
             )
-            results[config.name] = {"status": "ok", **res}
+            results[config.name] = {"status": "ok", "incremental": bool(extracted), **res}
         except Exception as e:
             results[config.name] = {"status": "error", "message": str(e)}
 

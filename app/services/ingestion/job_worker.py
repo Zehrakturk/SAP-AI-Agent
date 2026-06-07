@@ -149,11 +149,14 @@ def _run_job(job: dict, jobs_repo: JobRepository,
         rerun_result = {}
         if appr:
             from app.services.query_engine import ask
+            from app.models.store import company_of
+            _company = company_of(appr.get("user_id"))   # talep sahibinin firması
             rerun_result = ask(
                 appr.get("question") or "",
                 filters     = appr.get("filters") or {},
                 approval_mode = False,     # tekrar onay döngüsüne girme
                 force_fresh   = True,      # cache'i atla, taze çalıştır
+                company       = _company,  # firma izolasyonu
             )
             appr_repo.set_result(appr_id, rerun_result)
         audit.log("ingestion_job", job_id, AuditAction.RERUN, actor=_worker_id(),

@@ -20,6 +20,9 @@ env/
 data/*.db
 data/sap_data.db
 
+# ── İç altyapı bilgisi (SAP WSDL — iç hostname içerir, public repo'ya gitmez) ──
+data/wsdl/
+
 # ── IDE / OS ────────────────────────────────────────────────────────
 .vscode/
 .idea/
