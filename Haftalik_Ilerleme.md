@@ -26,8 +26,8 @@
 | 5 | 27.04 - 03.05 | *Vector database kurulumu ve embedding işlemleri (RAG altyapısı)* | %45 | ✅ Tamamlandı |
 | 6 | 04.05 - 10.05 | *Otomatik veri besleme pipeline’ı (scheduler: günlük veri aktarımı)* | %60 | ✅ Tamamlandı |
 | 7 | 11.05 - 17.05 | *AI’nin kendi veritabanından sorgu yapması ve doğru cevap üretmesi (retrieval + reasoning)* | %70 | ✅ Tamamlandı |
-| 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | 🔄 Devam Ediyor |
-| 9 | 01.06 - 07.06 | *Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix* | %90 | ⬜ Başlamadı |
+| 8 | 18.05 - 24.05 | *İş kuralları (business logic): karlılık, risk analizi, öneri üretimi* | %80 | ✅ Tamamlandı |
+| 9 | 01.06 - 07.06 | *Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix* | %90 | ✅ Tamamlandı |
 | 10 | 08.06 - 14.06 | *Yorum doğruluk oranı optimizasyonu* | %100 | ⬜ Başlamadı |
 
 **Durum simgeleri:** ⬜ Başlamadı | 🔄 Devam Ediyor | ✅ Tamamlandı | ⚠️ Gecikti
@@ -35,6 +35,22 @@
 ---
 
 ## Haftalık İlerleme Kayıtları
+
+### Hafta 9 *(Tarih: 01.06.2026 - 07.06.2026)*
+
+**Plandaki hedef:**
+- Testler (veri doğruluğu + AI cevap kalitesi) ve bug fix
+
+**Bu hafta yaptıklarım:**
+- Entegrasyondaki bug fix ler çözüldü veri doğruluğu için yeni bir entegrasyon daha kuruldu. Ayrıcı çoklu giriş eklendi.
+- Cache bellek eklendi. AI her soruda veriyi tekrar çekmiyor. RAG geliştirildi.
+  
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- Entegrasyonların bazıları dinamik sorgu ile bazıları ise fetch mantığı ile çalışmaktaydı. İkisini aynı anda projeye entegre ediyor olmak zorlayıcıydı.
+
 
 ### Hafta 8 *(Tarih: 18.05.2026 - 24.05.2026)*
 
