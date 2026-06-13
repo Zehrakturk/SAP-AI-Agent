@@ -66,7 +66,7 @@ def enhance_visualization(question: str, rows: list, summary: str,
     col_names = list(rows[0].keys()) if rows else []
 
     prompt = f"""Sen bir veri görselleştirme uzmanısın ve marka tasarımcısısın.
-SAP lojistik verisini analiz et ve görsel zenginleştirme önerileri üret.
+SAP verisini analiz et ve görsel zenginleştirme önerileri üret. Grafiklerin zengin ve etkili olması için x ve y sütunları için optimum alanı bul.
 
 Soru: "{question}"
 Mevcut Özet: "{summary}"

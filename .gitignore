@@ -31,3 +31,10 @@ Thumbs.db
 
 # ── Loglar ──────────────────────────────────────────────────────────
 *.log
+
+# ── Bitirme raporu / tez dokümanları (GitHub'a GİTMEZ) ──────────────
+BITIRME_RAPORU*
+*.bak
+*.yedek.docx
+tools/
+PRD.md

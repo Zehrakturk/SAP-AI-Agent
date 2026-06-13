@@ -86,7 +86,7 @@ def create_request():
 def list_approvals():
     guard = _require_admin()
     if guard: return guard
-    status = request.args.get("status")    # PENDING / APPROVED / REJECTED / EXPIRED / None
+    status = request.args.get("status")    # PENDING / APPROVED
     limit  = int(request.args.get("limit", 50))
     rows   = ApprovalRepository().list_by_status(status=status, limit=limit)
     return jsonify({"total": len(rows), "items": rows})
