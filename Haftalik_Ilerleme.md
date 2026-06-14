@@ -36,6 +36,20 @@
 
 ## Haftalık İlerleme Kayıtları
 
+### Hafta 10 *(Tarih: 08.06.2026 - 14.06.2026)*
+
+**Plandaki hedef:**
+- AI ın yorum doğruluk oranını artırmak 
+
+**Bu hafta yaptıklarım:**
+- Model geliştirildi.
+  
+**Plana göre durumum:**
+- Plana uyum sağlanmıştır.
+
+**Karşılaştığım sorunlar / zorluklar:**
+- yok
+
 ### Hafta 9 *(Tarih: 01.06.2026 - 07.06.2026)*
 
 **Plandaki hedef:**
