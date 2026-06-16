@@ -13,15 +13,15 @@ env/
 *.egg-info/
 .pytest_cache/
 
-# ── Yerel veritabanı dosyaları (data/ içindeki .py scriptleri KORUNUR) ──
+# ── Yerel veritabanı dosyaları (testdata/ içindeki .py scriptleri KORUNUR) ──
 *.db
 *.sqlite
 *.sqlite3
-data/*.db
-data/sap_data.db
+testdata/*.db
+testdata/sap_data.db
 
 # ── İç altyapı bilgisi (SAP WSDL — iç hostname içerir, public repo'ya gitmez) ──
-data/wsdl/
+testdata/wsdl/
 
 # ── IDE / OS ────────────────────────────────────────────────────────
 .vscode/
@@ -38,3 +38,6 @@ BITIRME_RAPORU*
 *.yedek.docx
 tools/
 PRD.md
+
+# ── Demo (sentetik) üretilen PDF'ler ────────────────────────────────
+testdata/demo_docs/

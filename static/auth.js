@@ -6,9 +6,10 @@
 const Auth = (() => {
 
   const DEMO_USERS = [
-    { username: 'admin',    password: 'admin123', name: 'System Admin',  role: 'ADMIN', company: 'ALL',      dept: 'IT' },
-    { username: 'warmhaus', password: 'warm123',  name: 'Warmhaus User', role: 'USER',  company: 'Warmhaus', dept: 'Lojistik' },
-    { username: 'beycelik', password: 'bey123',   name: 'Beyçelik User', role: 'USER',  company: 'Beycelik', dept: 'Üretim' },
+    { username: 'admin',    password: 'admin123', name: 'System Admin',   role: 'ADMIN', company: 'ALL',      dept: 'IT' },
+    { username: 'warmhaus', password: 'warm123',  name: 'Warmhaus User',  role: 'USER',  company: 'Warmhaus', dept: 'Lojistik' },
+    { username: 'beycelik', password: 'bey123',   name: 'Beyçelik User',  role: 'USER',  company: 'Beycelik', dept: 'Üretim' },
+    { username: 'demo',     password: 'demo123',  name: 'Demo Kullanıcı', role: 'USER',  company: 'Demo',     dept: 'Demo' },
   ];
 
   let currentUser = JSON.parse(sessionStorage.getItem('sap_ai_user') || 'null');
@@ -55,12 +56,26 @@ const Auth = (() => {
               </div>
             </div>
 
+            <!-- Canlı / Test sekmeleri -->
+            <div style="display:flex;gap:4px;background:#f3f4f6;border-radius:10px;padding:4px;margin-bottom:22px">
+              <button type="button" id="tab-live" class="login-tab" data-mode="live"
+                style="flex:1;padding:9px 0;border:none;border-radius:7px;background:#fff;cursor:pointer;
+                       font-family:inherit;font-size:13px;font-weight:700;color:#111827;
+                       box-shadow:0 1px 3px rgba(0,0,0,0.10);transition:all .15s">Canlı</button>
+              <button type="button" id="tab-test" class="login-tab" data-mode="test"
+                style="flex:1;padding:9px 0;border:none;border-radius:7px;background:transparent;cursor:pointer;
+                       font-family:inherit;font-size:13px;font-weight:600;color:#6b7280;
+                       box-shadow:none;transition:all .15s">Test</button>
+            </div>
+
             <h2 style="font-size:22px;font-weight:700;color:#111827;margin-bottom:4px;letter-spacing:-0.02em">Giriş Yap</h2>
-            <p style="font-size:13px;color:#6b7280;margin-bottom:18px">Firmanızı seçin ve bilgilerinizle giriş yapın.</p>
+            <p id="login-subtitle" style="font-size:13px;color:#6b7280;margin-bottom:18px">Firmanızı seçin ve bilgilerinizle giriş yapın.</p>
 
             <!-- Firma seçici -->
             <label style="display:block;font-size:12px;font-weight:600;color:#4b5563;margin-bottom:8px">Firma</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px">
+
+            <!-- CANLI grubu -->
+            <div id="group-live" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px">
               <button type="button" class="login-company" data-company="Warmhaus" data-user="warmhaus"
                 style="padding:12px 6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;
                        font-family:inherit;text-align:center;transition:all .15s">
@@ -78,6 +93,16 @@ const Auth = (() => {
                        font-family:inherit;text-align:center;transition:all .15s">
                 <div style="font-size:20px;line-height:1;margin-bottom:5px">🛡️</div>
                 <div style="font-size:12px;font-weight:700;color:#111827">Admin</div>
+              </button>
+            </div>
+
+            <!-- TEST grubu -->
+            <div id="group-test" style="display:none;margin-bottom:20px">
+              <button type="button" class="login-company" data-company="Demo" data-user="demo"
+                style="width:100%;padding:14px 6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;
+                       font-family:inherit;text-align:center;transition:all .15s">
+                <div style="font-size:20px;line-height:1;margin-bottom:5px">🧪</div>
+                <div style="font-size:12px;font-weight:700;color:#111827">Demo (Test Verisi)</div>
               </button>
             </div>
 
@@ -116,10 +141,14 @@ const Auth = (() => {
               onmouseout="this.style.background='#1a56db';this.style.transform='translateY(0)';this.style.boxShadow='none'"
             >Giriş Yap →</button>
 
-            <div style="font-size:11px;color:#9ca3af;margin-top:18px;text-align:center;line-height:1.7">
+            <div id="hint-live" style="font-size:11px;color:#9ca3af;margin-top:18px;text-align:center;line-height:1.7">
               <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">warmhaus / warm123</code> ·
               <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">beycelik / bey123</code><br>
               <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">admin / admin123</code>
+            </div>
+            <div id="hint-test" style="display:none;font-size:11px;color:#9ca3af;margin-top:18px;text-align:center;line-height:1.7">
+              <code style="background:#f3f4f6;padding:2px 7px;border-radius:4px;color:#4b5563">demo / demo123</code><br>
+              <span style="color:#0d9488">Test ortamı — yalnızca sentetik veri</span>
             </div>
 
           </div>
@@ -173,7 +202,7 @@ const Auth = (() => {
       // 2) Fallback: backend yoksa istemci-taraflı demo + sentetik token
       const match = DEMO_USERS.find(x => x.username === u && x.password === p);
       if (!match) { _showError(); return; }
-      const idMap = { admin: 1, warmhaus: 10, beycelik: 11 };
+      const idMap = { admin: 1, warmhaus: 10, beycelik: 11, demo: 20 };
       const demoId = idMap[match.username] || 99;
       localStorage.setItem('sap_ai_token', `demo-token-${demoId}-${match.role}-${match.company}`);
       currentUser = { username: match.username, name: match.name, role: match.role,
@@ -185,8 +214,41 @@ const Auth = (() => {
     document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
     document.getElementById('login-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-pass').focus(); });
 
+    // ── Canlı / Test sekmeleri: hangi kullanıcı grubu görünsün ─────────────
+    function _selectMode(mode) {
+      const isTest = mode === 'test';
+      // sekme görünümü
+      const tLive = document.getElementById('tab-live');
+      const tTest = document.getElementById('tab-test');
+      [[tLive, !isTest], [tTest, isTest]].forEach(([btn, active]) => {
+        btn.style.background = active ? '#fff' : 'transparent';
+        btn.style.color      = active ? '#111827' : '#6b7280';
+        btn.style.fontWeight = active ? '700' : '600';
+        btn.style.boxShadow  = active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none';
+      });
+      // gruplar + ipuçları
+      document.getElementById('group-live').style.display = isTest ? 'none' : 'grid';
+      document.getElementById('group-test').style.display = isTest ? 'block' : 'none';
+      document.getElementById('hint-live').style.display  = isTest ? 'none' : 'block';
+      document.getElementById('hint-test').style.display  = isTest ? 'block' : 'none';
+      // alt başlık
+      document.getElementById('login-subtitle').textContent = isTest
+        ? 'Test ortamı — sentetik veriyle giriş yapın.'
+        : 'Firmanızı seçin ve bilgilerinizle giriş yapın.';
+      // seçimleri/sıfırla
+      overlay.querySelectorAll('.login-company').forEach(b => {
+        b.style.borderColor = '#e5e7eb'; b.style.background = '#fff'; b.style.boxShadow = 'none';
+      });
+      document.getElementById('login-user').value = '';
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-error').style.display = 'none';
+    }
+    overlay.querySelectorAll('.login-tab').forEach(btn => {
+      btn.addEventListener('click', () => _selectMode(btn.dataset.mode));
+    });
+
     // ── Firma seçici: highlight + kullanıcı adını otomatik doldur ──────────
-    const _COMP_ACCENT = { Warmhaus: '#ea580c', Beycelik: '#1a56db', ALL: '#7c3aed' };
+    const _COMP_ACCENT = { Warmhaus: '#ea580c', Beycelik: '#1a56db', ALL: '#7c3aed', Demo: '#0d9488' };
     function _selectCompany(btn) {
       overlay.querySelectorAll('.login-company').forEach(b => {
         b.style.borderColor = '#e5e7eb';
@@ -217,7 +279,7 @@ const Auth = (() => {
       // Önceki oturumda token yoksa (eski sürüm) sentetik demo token üret —
       // aksi halde admin onay yetkisi / firma filtresi çalışmaz.
       if (!localStorage.getItem('sap_ai_token')) {
-        const idMap = { admin: 1, warmhaus: 10, beycelik: 11 };
+        const idMap = { admin: 1, warmhaus: 10, beycelik: 11, demo: 20 };
         const demoId = idMap[currentUser.username] || 99;
         const comp   = currentUser.company || 'ALL';
         localStorage.setItem('sap_ai_token', `demo-token-${demoId}-${currentUser.role || 'USER'}-${comp}`);

@@ -15,7 +15,7 @@ const ChatsPage = (() => {
   // -------------------------------------------------------
   function render() {
     return `
-    <div class="chat-layout" style="height:calc(100vh - 120px)">
+    <div class="chat-layout" style="height:calc(100vh - 84px)">
 
       <!-- Sol panel -->
       <div class="chat-sidebar" style="display:flex;flex-direction:column">
@@ -547,8 +547,8 @@ const ChatsPage = (() => {
                   font-size:11px;font-weight:700;display:flex;align-items:center;
                   justify-content:center;flex-shrink:0;margin-top:2px">AI</div>
 
-      <!-- AI içerik — sol hizalı, max %85 genişlik -->
-      <div style="flex:1;min-width:0;max-width:85%">
+      <!-- AI içerik — sol hizalı, geniş (rapor tek ekrana sığsın) -->
+      <div style="flex:1;min-width:0;max-width:94%">
         <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px 16px 16px 16px;
                     padding:14px 16px">
 
@@ -1527,9 +1527,28 @@ const ChatsPage = (() => {
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
               ${pin}${s.title || 'Yeni Sohbet'}
             </div>
-            <span onclick="event.stopPropagation();ChatsPage.togglePin('${s.id}',${s.pinned?0:1})"
-                  title="${s.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}"
-                  style="cursor:pointer;font-size:12px;opacity:${s.pinned?1:.35};flex-shrink:0">📌</span>
+            <div style="position:relative;flex-shrink:0">
+              <button onclick="event.stopPropagation();ChatsPage.toggleMenu('${s.id}',event)"
+                      title="Seçenekler"
+                      style="background:none;border:none;cursor:pointer;font-size:17px;line-height:1;
+                             color:var(--text-muted);padding:2px 5px;border-radius:5px"
+                      onmouseover="this.style.background='var(--bg-soft)'"
+                      onmouseout="this.style.background='none'">⋮</button>
+              <div id="menu-${s.id}" style="display:none;position:absolute;right:0;top:calc(100% + 2px);z-index:50;
+                   background:var(--card);border:1px solid var(--border);border-radius:8px;
+                   box-shadow:0 6px 18px rgba(0,0,0,.14);min-width:170px;padding:4px">
+                <button onclick="event.stopPropagation();ChatsPage.togglePin('${s.id}',${s.pinned?0:1})"
+                        style="width:100%;text-align:left;background:none;border:none;cursor:pointer;
+                               font-size:13px;color:var(--text);padding:8px 10px;border-radius:6px;font-family:inherit"
+                        onmouseover="this.style.background='var(--bg-soft)'"
+                        onmouseout="this.style.background='none'">${s.pinned ? '📌 Sabitlemeyi kaldır' : '📌 Sabitle'}</button>
+                <button onclick="event.stopPropagation();ChatsPage.deleteSession('${s.id}',event)"
+                        style="width:100%;text-align:left;background:none;border:none;cursor:pointer;
+                               font-size:13px;color:#dc2626;padding:8px 10px;border-radius:6px;font-family:inherit"
+                        onmouseover="this.style.background='#fef2f2'"
+                        onmouseout="this.style.background='none'">🗑 Sil</button>
+              </div>
+            </div>
           </div>
           ${tags ? `<div style="margin-top:4px">${tags}</div>` : ''}
           <div onclick="ChatsPage.loadSession('${s.id}')"
@@ -1696,8 +1715,36 @@ const ChatsPage = (() => {
     msgs.appendChild(div);
   }
 
+  function _closeAllMenus(exceptSid) {
+    document.querySelectorAll('#session-list [id^="menu-"]').forEach(m => {
+      if (m.id !== `menu-${exceptSid}`) m.style.display = 'none';
+    });
+  }
+
+  function toggleMenu(sid, e) {
+    e?.stopPropagation();
+    const m = document.getElementById(`menu-${sid}`);
+    if (!m) return;
+    const willShow = m.style.display === 'none';
+    _closeAllMenus(sid);
+    m.style.display = willShow ? 'block' : 'none';
+    if (!willShow) return;
+    // Kaydırılabilir liste içinde alta sığmıyorsa yukarı aç (son sohbetlerde kırpılmasın)
+    const listEl = document.getElementById('session-list');
+    const mr = m.getBoundingClientRect();
+    const lr = (listEl?.parentElement || listEl)?.getBoundingClientRect();
+    if (lr && mr.bottom > lr.bottom) {
+      m.style.top = 'auto';
+      m.style.bottom = 'calc(100% + 2px)';
+    } else {
+      m.style.bottom = 'auto';
+      m.style.top = 'calc(100% + 2px)';
+    }
+  }
+
   async function deleteSession(sid, e) {
     e?.stopPropagation();
+    _closeAllMenus();
     if (!confirm('Bu sohbeti silmek istiyor musunuz?')) return;
     const token = localStorage.getItem('sap_ai_token') || '';
     await fetch(`/api/v1/chats/sessions/${sid}`, {
@@ -1713,6 +1760,12 @@ const ChatsPage = (() => {
       const u = JSON.parse(localStorage.getItem('sap_user') || '{}');
       window._currentUser = u.name || 'U';
     } catch {}
+
+    // Sohbet menüsü (⋮) — dışarı tıklayınca kapansın (bir kez bağla)
+    if (!window._chatMenuOutsideBound) {
+      document.addEventListener('click', () => _closeAllMenus());
+      window._chatMenuOutsideBound = true;
+    }
 
     // Filtre değişimini izle
     ['filter-start','filter-end','filter-musteri','filter-city','filter-tdurum'].forEach(id => {
@@ -1745,7 +1798,7 @@ const ChatsPage = (() => {
 
   return { render, init, sendMessage, runFilter, onKeyDown, useQuestion, askFollowUp,
            clearHistory, newChat, loadSession, deleteSession, toggleFilters,
-           searchSessions, togglePin };
+           searchSessions, togglePin, toggleMenu };
 })();
 
 window.ChatsPage = ChatsPage;

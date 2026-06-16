@@ -20,7 +20,7 @@ def _parts(req) -> list[str]:
 # Türkçe ç/c, ş/s gibi farklı yazımlar tek değere indirgenir; aksi halde firma filtreleri
 # (entegrasyon listesi, şema, metrik) yanlışlıkla eşleşmez ve kayıtlar "kaybolur".
 _TR_FOLD = str.maketrans("ıİşŞğĞüÜöÖçÇ", "iissgguuoocc")
-_CANON   = {"beycelik": "Beycelik", "warmhaus": "Warmhaus", "all": "ALL"}
+_CANON   = {"beycelik": "Beycelik", "warmhaus": "Warmhaus", "all": "ALL", "demo": "Demo"}
 
 
 def canonical_company(c: str | None) -> str:

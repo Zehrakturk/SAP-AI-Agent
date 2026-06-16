@@ -38,6 +38,7 @@ USERS = [
     {"id": 10, "username": "warmhaus", "password": "warm123",  "name": "Warmhaus User",  "role": "USER",   "company": "Warmhaus",  "department": "Lojistik",  "status": "active",   "created_at": "2026-06-01", "last_login": "now"},
     {"id": 11, "username": "beycelik", "password": "bey123",   "name": "Beyçelik User",  "role": "USER",   "company": "Beycelik",  "department": "Üretim",    "status": "active",   "created_at": "2026-06-01", "last_login": "now"},
     {"id": 8,  "username": "p.frank",  "password": "view123",  "name": "Paul Frank",     "role": "VIEWER", "company": "ALL",       "department": "Management","status": "inactive", "created_at": "2025-03-11", "last_login": "5 days ago"},
+    {"id": 20, "username": "demo",     "password": "demo123",  "name": "Demo Kullanıcı", "role": "USER",   "company": "Demo",      "department": "Demo",      "status": "active",   "created_at": "2026-06-01", "last_login": "now"},
 ]
 
 

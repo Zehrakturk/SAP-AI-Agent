@@ -295,6 +295,9 @@ ul, ol { list-style: none; }
   animation: page-fade 0.22s ease;
 }
 
+/* Chat sayfası: çerçeve daha büyük olsun diye dolguyu azalt (yalnız bu sayfa) */
+#page-chats { padding: 10px 14px; }
+
 @keyframes page-fade {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
